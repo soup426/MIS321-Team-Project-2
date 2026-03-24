@@ -1,0 +1,20 @@
+Mulholland Real estate
+
+Industry
+    Property management
+    manages few differnt properties in apartment buidlings
+    Triage and get solutions to matnience tickets
+    Triage ahead of time and have dashboard view, critical, human intervention
+    Keep residents happy
+    Dashboard view of triaged matinence requests - use AI model to analyze data, assign severity and confidence. If low confidence, human notification. Have it tag certain issues. filter by severity. Risk assesment. 
+    will give up sample data
+    Let us handle metrics to define severity. 
+    
+    Timeline
+        two week cadence, play by ear
+        timeline on client end? nothing that will impact us. 
+        
+    Bonus features?
+        Mobile app? Yes, if we can do it. Allow for image viewing
+        Image uploads
+        Maybe an employee dashboard? like auto assign employees to tickets that have that skillset. 

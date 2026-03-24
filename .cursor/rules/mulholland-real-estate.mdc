@@ -1,0 +1,32 @@
+---
+description: Mulholland Real Estate maintenance triage — stack, domain, and conventions for TeamProject2
+alwaysApply: true
+---
+
+# Mulholland Real Estate (Team Project 2)
+
+## Product
+
+- **Sponsor:** Mulholland Real Estate — property management, maintenance ticket **triage** before dispatch.
+- **Value:** **n8n** workflow returns **category**, **urgency**, **confidence**, **tags**, and **risk notes**; **human review** when confidence is low. Dashboard filters and batch triage.
+- **Sample data:** `Sample Data/Maintenance Report Example.xlsx` — seeded via `API/MulhollandRealEstate.API/Data/maintenance-seed.json`. Columns `actualCategory` / `actualUrgency` are **evaluation labels**, not user input.
+
+## Stack (this repo)
+
+- **API:** ASP.NET Core 9 Web API, **EF Core**, **MySQL** (Pomelo). Connection string from `ConnectionStrings:DefaultConnection` or Heroku-style **`DATABASE_URL`** (`mysql://...`) resolved in `Configuration/MysqlConnectionResolver.cs`. Migrations in `API/MulhollandRealEstate.API/Migrations/`.
+- **Triage:** HTTP **POST** from `TriageService` to **`N8n:TriageWebhookUrl`** with payload shape in `Services/N8nTriageDtos.cs`. If the URL is missing, disabled, or the call fails, use **heuristic** triage.
+- **Client:** **Bootstrap 5** + **vanilla JS** under `Client/` — no npm/bundler unless the team adds it.
+- **Integration:** Browser → REST + JSON; permissive CORS for local dev.
+- **Hosting:** MySQL may run on **Heroku** (addon URL → `DATABASE_URL`); local dev uses `appsettings.Development.json` or user secrets.
+
+## Conventions
+
+- **Namespaces / project:** `MulhollandRealEstate.API`.
+- **Ticket key:** `requestNumber` (business id) for routes and UI; DB `Id` is identity PK.
+- **Config:** User secrets or env vars for **`N8n:TriageWebhookUrl`** and optional webhook auth; never commit real secrets.
+- **New features:** Align with `IMPLEMENTATION_TASKS.md`; avoid unrelated refactors.
+
+## When editing
+
+- Match existing C# and JS style; EF for persistence.
+- Document new config keys in `README.md`.

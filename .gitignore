@@ -1,0 +1,11 @@
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+.idea/
+
+# Local SQLite / accidental DB files
+**/mulholland.db
+**/mulholland.db-*

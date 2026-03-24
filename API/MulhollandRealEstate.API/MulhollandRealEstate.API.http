@@ -1,0 +1,13 @@
+@MulhollandRealEstate.API_HostAddress = http://localhost:5278
+
+### List tickets
+GET {{MulhollandRealEstate.API_HostAddress}}/api/tickets
+
+### Summary
+GET {{MulhollandRealEstate.API_HostAddress}}/api/tickets/summary
+
+### Triage one ticket
+POST {{MulhollandRealEstate.API_HostAddress}}/api/tickets/1001/triage
+
+### Triage all (batch)
+POST {{MulhollandRealEstate.API_HostAddress}}/api/tickets/triage-all
