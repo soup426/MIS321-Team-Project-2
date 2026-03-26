@@ -9,3 +9,7 @@
 # Local SQLite / accidental DB files
 **/mulholland.db
 **/mulholland.db-*
+
+# Optional local overrides (never commit real passwords)
+**/appsettings.Development.local.json
+**/appsettings.*.local.json

@@ -18,3 +18,22 @@ Industry
         Mobile app? Yes, if we can do it. Allow for image viewing
         Image uploads
         Maybe an employee dashboard? like auto assign employees to tickets that have that skillset. 
+
+--- Project status (living) — update as you ship ---
+
+Sponsor asks (from above) — where we are:
+
+- Dashboard of triaged maintenance requests — DONE (web UI + API; triage via n8n or heuristic).
+- AI: category, urgency, confidence, tags, risk notes — DONE (stored on maintenance_requests).
+- Low confidence → human review — DONE (Needs review badge + threshold Triage:HumanReviewBelowConfidence).
+- Filter by severity/urgency — DONE (dashboard filter).
+- Risk assessment — PARTIAL (risk_notes field + display; could add richer UI or scoring).
+- Sample data — DONE (seed JSON + Excel in Sample Data).
+
+Still open / stretch vs intro + README:
+
+- Metrics definition — OPEN (team + sponsor: accuracy vs actual_*, emergency catch rate, etc.).
+- Auto-assign by skillset — PARTIAL (employees + manual assign + DB for skills in SQL; n8n/rules can set assignee; full “recommended assignee” scoring not built in API UI).
+- Image uploads + triage context — NOT DONE (bonus).
+- Mobile / responsive polish — PARTIAL (Bootstrap; not a native app).
+- Employee-only dashboard — NOT DONE (same app today; optional split later).

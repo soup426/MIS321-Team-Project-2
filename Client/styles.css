@@ -1,3 +1,19 @@
 .table tbody tr.table-warning > td {
   --bs-table-bg: rgba(255, 193, 7, 0.12);
 }
+
+td {
+  vertical-align: middle;
+}
+
+.cell-truncate {
+  max-width: 420px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assignee-select {
+  min-width: 170px;
+  max-width: 220px;
+}

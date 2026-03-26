@@ -1,52 +1,52 @@
 # MIS 321 — Team Project 2 (Mulholland Real Estate)
 
-Property-management maintenance **triage** demo: ASP.NET Core 9 Web API (EF Core + **MySQL** via Pomelo), Bootstrap + vanilla JS client, and **n8n webhook** triage with **heuristic fallback**. Deployed DB can live on **Heroku** (see below). Sample data: `Sample Data/Maintenance Report Example.xlsx` → `Data/maintenance-seed.json`.
+Property-management maintenance **triage** demo: ASP.NET Core 9 Web API (EF Core + **MySQL** via Pomelo), Bootstrap + vanilla JS client, and **n8n webhook** triage with **heuristic fallback**. Production DB can live on **Heroku** (`DATABASE_URL` or connection string). Sample data: `Sample Data/Maintenance Report Example.xlsx` → `API/MulhollandRealEstate.API/Data/maintenance-seed.json`.
+
+**Sponsor notes:** see `Intro meeting for group 2.txt` (dashboard, AI triage, human review when confidence is low, tags, filters, risk — plus bonus ideas: images, mobile, skill-based assignment).
 
 ## Repo layout
 
 | Path | Purpose |
 |------|---------|
-| `API/MulhollandRealEstate.API/` | Web API, migrations, seed JSON |
-| `Client/` | Static dashboard (`index.html`, `app.js`, `styles.css`) |
+| `API/MulhollandRealEstate.API/` | Main Web API, EF migrations, seed JSON |
+| `API/MulhollandRealEstate.TestingAPI/` | Same API wired for local n8n/Heroku testing (typical port **5288**) |
+| `Client/` | Static dashboard (`index.html`, `app.js`, `styles.css`); Bootstrap vendored under `Client/vendor/bootstrap/` (no CDN required) |
+| `SQL/` | Optional hand-run MySQL scripts (`mulholland_schema.sql`, `mulholland_workforce.sql`) aligned with n8n/Heroku |
 | `Sample Data/` | Source Excel for seeded tickets |
 | `IMPLEMENTATION_TASKS.md` | Living checklist |
 | `.cursor/rules/mulholland-real-estate.mdc` | Cursor project conventions |
 
+## Secrets (do not commit)
+
+- **Never** commit real MySQL passwords, `DATABASE_URL`, or n8n secrets in repo.
+- Use **user secrets**, env vars (`DATABASE_URL`, `ConnectionStrings__DefaultConnection`), or Heroku config vars.
+- `appsettings.Development.json` in this repo uses **placeholders** only. Copy `API/MulhollandRealEstate.TestingAPI/appsettings.Development.json.example` if you want a local template.
+- If credentials were ever exposed in git history, **rotate** them in the Heroku / DB provider dashboard.
+
 ## Prerequisites
 
 - [.NET 9 SDK](https://dotnet.microsoft.com/download)
-- **MySQL 8** reachable from your machine (local install, or Heroku addon / JawsDB / etc.)
-- **n8n** workflow URL when you want live triage (optional until the webhook exists)
+- **MySQL 8** reachable from your machine (local, or Heroku addon / JawsDB / ClearDB)
+- **n8n** workflow URL when you want live triage (optional; heuristic fallback if missing or failing)
 
 ## Database (MySQL)
 
-### Local development
+### Connection
 
-`appsettings.Development.json` includes an example `ConnectionStrings:DefaultConnection` pointing at `127.0.0.1` — adjust user/password/database name to match your MySQL instance, then:
+Heroku-style URLs: set **`DATABASE_URL`** = `mysql://user:pass@host:port/dbname`, or use **`ConnectionStrings:DefaultConnection`**. Resolved in `Configuration/MysqlConnectionResolver.cs` with **`SslMode=Required`** for typical cloud MySQL (do not use unsupported MySqlConnector options in connection strings).
 
-```bash
-cd API/MulhollandRealEstate.API
-dotnet ef database update
-```
+### Schema
 
-On startup, migrations run and **30** tickets are seeded if the table is empty.
+- Primary table: **`maintenance_requests`** (snake_case; same as n8n writes).
+- Optional: run `SQL/mulholland_schema.sql` then `SQL/mulholland_workforce.sql` on Heroku if you use employees/events/assignment columns.
 
-### Heroku
+### Migrations / seed
 
-Heroku MySQL addons (e.g. JawsDB) usually expose a **`mysql://user:pass@host:port/dbname`** URL as **`DATABASE_URL`** (sometimes `JAWSDB_URL` / `CLEARDB_DATABASE_URL`). The API resolves that automatically via `Configuration/MysqlConnectionResolver.cs` and connects with **`SslMode=Required`** and **`TrustServerCertificate=true`** by default (override under **`MySql:`** in config if your provider needs different SSL settings).
-
-Set **either**:
-
-- **`DATABASE_URL`** = `mysql://...` from the addon, **or**
-- **`ConnectionStrings__DefaultConnection`** = a full Pomelo/ADO.NET MySQL connection string
-
-Do **not** commit credentials. In the Heroku dashboard: Config Vars, or CLI `heroku config:set`.
-
-For **`dotnet ef database update`** against the remote DB, point env at the same URL (e.g. export `DATABASE_URL` before running the command) or set `ConnectionStrings__DefaultConnection` for that shell session.
+`Database:AutoMigrate` and `Database:SeedEnabled` in appsettings control whether startup migrates/seeds (default **false** for Heroku to avoid surprise DDL). Use EF migrations from `API/MulhollandRealEstate.API` when you want local schema from code.
 
 ## Triage: n8n webhook
 
-The API **POST**s a JSON payload to **`N8n:TriageWebhookUrl`** (see `Services/N8nTriageDtos.cs`). Your n8n workflow should return JSON the API can parse, for example:
+The API **POST**s JSON to **`N8n:TriageWebhookUrl`** (see `Services/N8nTriageDtos.cs`). n8n should return parseable JSON, e.g.:
 
 ```json
 {
@@ -58,56 +58,115 @@ The API **POST**s a JSON payload to **`N8n:TriageWebhookUrl`** (see `Services/N8
 }
 ```
 
-The parser also accepts common n8n shapes: a top-level **array** (first item), or an object with a **`json`** or **`body`** property containing those fields.
+The parser also accepts common n8n shapes: top-level **array** (first item), or **`json`** / **`body`** wrappers.
 
-Until the webhook URL is set, or if the request fails, triage uses **heuristics** (`triageSource` = `heuristic`). Successful webhook triage sets `triageSource` = `n8n`.
-
-### Configuration
-
-In `appsettings.json` / `appsettings.Development.json`, or **user secrets**:
+Configure via user secrets or env:
 
 ```bash
 cd API/MulhollandRealEstate.API
 dotnet user-secrets set "N8n:TriageWebhookUrl" "https://your-n8n.example/webhook/..."
 ```
 
-Optional auth headers (same pattern as many n8n setups):
+Human review: **`Triage:HumanReviewBelowConfidence`** (default `0.55`). Set **`N8n:Enabled`** to `false` to force heuristics.
 
-- `N8n:ClientId` / `N8n:ClientSecret` → sent as `X-Client-Id` / `X-Client-Secret` by default (names overridable).
-
-Set **`N8n:Enabled`** to `false` to force heuristics even when a URL is configured.
-
-Human review is flagged when confidence is below **`Triage:HumanReviewBelowConfidence`** (default `0.55`).
-
-## Run the API
+## Run the main API
 
 ```bash
 cd API/MulhollandRealEstate.API
 dotnet run --launch-profile http
 ```
 
-Swagger: `/swagger`, API base `http://localhost:5278`.
+Swagger: `/swagger` (default URL in launch settings, often port **5278**).  
+If `Client/` exists at repo root, the same process also serves the **dashboard** at `/` (static files + default `index.html`).
 
-## Run the client
-
-Serve `Client/` over HTTP (not `file://`), e.g.:
+## Run Testing API + dashboard (recommended for local demo)
 
 ```bash
-cd Client
-python3 -m http.server 5500
+cd API/MulhollandRealEstate.TestingAPI
+dotnet run --launch-profile testing-http
 ```
 
-Open `http://localhost:5500` and point **API base** at the API if needed.
+- **API + Swagger:** `http://localhost:5288/swagger`
+- **Dashboard (static files served by Kestrel):** `http://localhost:5288/`
+
+The client uses **`window.location.origin`** for API calls, so opening the dashboard on the same host/port avoids CORS and mixed-origin issues.
+
+## Optional UI upgrade: GridStack “stats” dashboard
+
+It’s feasible to add [GridStack](https://gridstackjs.com/) to this repo because the client is plain static assets (no bundler required). This enables a draggable/resizable “stats widgets” area above the tickets table, with different KPIs shown as tiles.
+
+### What you’ll get
+
+- **Drag/drop + resize** stat widgets (persisted per-browser via `localStorage`)
+- **Different stats per widget**, all computed from existing API calls
+- **Zero framework**: works with the existing `Client/index.html` + `Client/app.js`
+
+### Minimal integration plan (no API changes required)
+
+- **Add GridStack assets** (recommended: vendor locally, like Bootstrap)
+  - Put files under `Client/vendor/gridstack/`:
+    - `gridstack-all.js` (or `gridstack-h5.js` depending on your preference)
+    - `gridstack.min.css`
+  - Add them to `Client/index.html` *after* Bootstrap CSS and *before* `app.js`.
+- **Replace the fixed summary strip** (`#summaryRow`) with a GridStack container:
+  - New container: `<div class="grid-stack" id="statsGrid"></div>`
+  - Each widget is a `.grid-stack-item` containing a small Bootstrap card.
+- **Define widgets as data**, not hardcoded DOM:
+  - Create an array like `const STAT_WIDGETS = [{ id, title, compute(tickets, summary), format }]`
+  - Render widgets into GridStack based on that list.
+- **Compute stats from what we already fetch**
+  - Use `GET /api/tickets` result (already loaded by `loadTickets()`) to compute:
+    - Open vs closed
+    - Unassigned count
+    - Emergency / Urgent / Routine counts
+    - “Needs human review” count
+    - Avg confidence of triaged tickets
+  - Use `GET /api/tickets/summary` result (already loaded by `loadSummary()`) for:
+    - Total / triaged / needsHumanReview
+    - Category + urgency match rates (for seeded sample rows)
+- **Persist layout**
+  - On GridStack change events, save layout (`x,y,w,h`) keyed by widget id in `localStorage`.
+  - On load, restore layout if present; otherwise use default positions.
+
+### Suggested default widgets (“different stats”)
+
+All of these can be computed from existing endpoints:
+
+- **Total tickets**: from summary `total`
+- **Triaged**: from summary `triaged`
+- **Needs human review**: from summary `needsHumanReview`
+- **Open**: count `status === "Open"` from `/api/tickets`
+- **Emergency (open)**: `status === "Open" && predictedUrgency === "Emergency"`
+- **Unassigned (open)**: `status === "Open" && assignedEmployeeId == null`
+- **Avg confidence (triaged)**: mean of `confidenceScore` where present/valid
+- **Urgency match (sample)**: `urgencyMatches / comparedRows` (summary)
+- **Category match (sample)**: `categoryMatches / comparedRows` (summary)
+
+### If you want server-side stats (optional)
+
+If the ticket list gets large, add a new endpoint like `GET /api/tickets/stats` that returns a pre-aggregated payload for the widgets. That keeps the UI snappy and avoids recomputing in JS.
 
 ## API highlights
 
-- `GET /api/tickets` — list; query `urgency`, `needsHumanOnly`
+**Tickets**
+
+- `GET /api/tickets` — list; query: `urgency`, `needsHumanOnly`, `status` (Open/Closed), `assignedEmployeeId` (`0` = unassigned)
 - `GET /api/tickets/summary`
 - `GET /api/tickets/{requestNumber}`
-- `POST /api/tickets/{requestNumber}/triage` — calls n8n (or heuristic)
+- `POST /api/tickets` — submit test ticket (auto-triage if configured)
+- `POST /api/tickets/{requestNumber}/triage` — re-run triage
 - `POST /api/tickets/triage-all`
+- `GET /api/tickets/{requestNumber}/events` — audit trail / notes
+- `POST /api/tickets/{requestNumber}/notes`
+- `POST /api/tickets/{requestNumber}/assign` — body `employeeId` (use `0` to unassign)
+- `POST /api/tickets/{requestNumber}/close` / `POST .../reopen`
 
-`actualCategory` / `actualUrgency` are **sample labels** for evaluation; predictions go in `predicted*`.
+**Employees**
+
+- `GET /api/employees`
+- `POST /api/employees` — create assignee (dev/demo)
+
+`actualCategory` / `actualUrgency` are **evaluation labels** from sample data, not resident input.
 
 ## Course artifacts
 
@@ -115,4 +174,4 @@ See `Intro meeting for group 2.txt` and `Group Project 2 - Business Startup.pdf`
 
 ## Docker (API only)
 
-`API/MulhollandRealEstate.API/Dockerfile` builds the API. Pass **`DATABASE_URL`** or **`ConnectionStrings__DefaultConnection`** at runtime so the container can reach your Heroku (or other) MySQL instance.
+`API/MulhollandRealEstate.API/Dockerfile` builds the API. Pass **`DATABASE_URL`** or **`ConnectionStrings__DefaultConnection`** at runtime.

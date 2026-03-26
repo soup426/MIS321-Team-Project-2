@@ -22,6 +22,11 @@ public class TicketListItemDto
     public string? TriageSource { get; set; }
     public bool? CategoryMatchesSample { get; set; }
     public bool? UrgencyMatchesSample { get; set; }
+
+    public string Status { get; set; } = "Open";
+    public DateTime? ClosedAt { get; set; }
+    public long? AssignedEmployeeId { get; set; }
+    public string? AssignedEmployeeName { get; set; }
 }
 
 public class TriageSummaryDto

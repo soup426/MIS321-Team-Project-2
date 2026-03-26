@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using MulhollandRealEstate.API.Configuration;
 using MulhollandRealEstate.API.Data;
 using MulhollandRealEstate.API.Services;
@@ -39,13 +40,27 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
+
+// Serve the vanilla dashboard (Client/) from dotnet (same as TestingAPI).
+var clientPath = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "..", "Client"));
+if (Directory.Exists(clientPath))
+{
+    var fp = new PhysicalFileProvider(clientPath);
+    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fp });
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = fp });
+}
+
 app.MapControllers();
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.MigrateAsync();
-    await DbSeeder.SeedAsync(db, app.Environment);
+    var autoMigrate = app.Configuration.GetValue("Database:AutoMigrate", false);
+    var seedEnabled = app.Configuration.GetValue("Database:SeedEnabled", false);
+    if (autoMigrate)
+        await db.Database.MigrateAsync();
+    if (seedEnabled)
+        await DbSeeder.SeedAsync(db, app.Environment);
 }
 
 await app.RunAsync();

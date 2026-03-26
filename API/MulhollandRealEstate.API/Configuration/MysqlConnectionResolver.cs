@@ -79,9 +79,9 @@ public static class MysqlConnectionResolver
         if (string.IsNullOrEmpty(database))
             throw new InvalidOperationException("Database name missing in URL path.");
 
-        var trustCert = configuration.GetValue("MySql:TrustServerCertificate", true);
         var sslMode = configuration["MySql:SslMode"] ?? "Required";
 
-        return $"Server={host};Port={port};Database={database};User Id={user};Password={password};SslMode={sslMode};TrustServerCertificate={trustCert};";
+        // MySqlConnector does not support TrustServerCertificate; rely on provider TLS defaults.
+        return $"Server={host};Port={port};Database={database};User Id={user};Password={password};SslMode={sslMode};";
     }
 }

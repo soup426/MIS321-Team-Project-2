@@ -34,4 +34,14 @@ public class MaintenanceRequest
     public bool NeedsHumanReview { get; set; }
     public DateTime? LastTriagedAt { get; set; }
     public string? TriageSource { get; set; }
+
+    // Workflow fields (open/closed + assignment)
+    public string Status { get; set; } = "Open"; // Open|Closed
+    public DateTime? ClosedAt { get; set; }
+    public string? ClosedBy { get; set; }
+    public string? ResolutionNotes { get; set; }
+
+    public long? AssignedEmployeeId { get; set; }
+    public DateTime? AssignedAt { get; set; }
+    public string? AssignmentSource { get; set; }
 }

@@ -4,37 +4,39 @@ Use this as the team’s working backlog. Check boxes as you complete work; add 
 
 ## Phase 0 — Environment
 
-- [ ] `dotnet ef database update` succeeds against MySQL (local or Heroku URL in env)
-- [ ] API runs (`dotnet run`) and Swagger loads
-- [ ] Client served over HTTP (not `file://`) and loads tickets from API
-- [ ] n8n triage webhook URL in user secrets (`N8n:TriageWebhookUrl`); confirm responses parse (or heuristic fallback works)
+- [x] `dotnet ef database update` succeeds against MySQL (local or Heroku URL in env) — *verify on each machine*
+- [x] API runs (`dotnet run`) and Swagger loads
+- [x] Client loads tickets from API (dashboard at `http://localhost:5288/` when using TestingAPI; static files served by dotnet)
+- [x] n8n triage webhook URL configurable; responses parse (or heuristic fallback works)
 
 ## Phase 1 — Core product (MVP)
 
-- [ ] Dashboard shows all tickets with predicted severity/urgency and confidence
-- [ ] Filter by urgency and “needs human” works end-to-end
-- [ ] Single-ticket and batch triage actions tested
+- [x] Dashboard shows tickets with predicted urgency, confidence, tags, risk notes
+- [x] Filter by urgency, “needs human”, status (Open/Closed), assignee
+- [x] Single-ticket and batch triage actions
 - [ ] Human-review threshold (`Triage:HumanReviewBelowConfidence`) tuned with sponsor input
-- [ ] Document assumptions in README or sponsor-facing one-pager
+- [x] README + intro notes kept current (this file + `Intro meeting for group 2.txt`)
 
 ## Phase 2 — AI quality & evaluation
 
-- [ ] Compare model predictions to `actualCategory` / `actualUrgency` (summary endpoint + manual spot checks)
+- [x] Compare predictions to `actualCategory` / `actualUrgency` (summary endpoint + per-row match flags where labels exist)
 - [ ] Iterate n8n workflow (LLM nodes, prompts, branching) for better accuracy
-- [ ] Define team metrics (accuracy, calibration, false negatives on emergencies)
-- [ ] Log triage failures and API errors for demo debugging
+- [ ] Define team metrics (accuracy, calibration, false negatives on emergencies) — sponsor: “we handle metrics for severity”
+- [ ] Log triage failures and API errors for demo debugging (structured logs / correlation id)
 
 ## Phase 3 — Property / ops features
 
-- [ ] Property / building / unit drill-down views (if not covered by filters)
-- [ ] Persist staff actions (acknowledge human review, assign vendor) — **needs new tables**
+- [ ] Property / building / unit drill-down views (beyond table columns)
+- [x] Persist staff actions: notes, close/reopen, assign (events table + maintenance_requests columns)
 - [ ] Role-based access (optional; likely out of scope unless required)
+- [ ] Optional: GridStack stats widgets (drag/drop KPI tiles above ticket table; persisted layout)
 
-## Phase 4 — Bonus (sponsor ideas)
+## Phase 4 — Bonus (sponsor ideas from intro meeting)
 
 - [ ] Image upload + storage + pass image context to triage
-- [ ] Mobile-friendly client layout / PWA
-- [ ] Auto-suggest assignee by trade/skill (needs employee/skill data model)
+- [ ] Mobile-friendly client layout / PWA (responsive pass; native app = stretch)
+- [x] Employee + assignment model (DB + API + dashboard assign) — *auto-assign by skillset still open*
+- [ ] “Recommended assignee” by skill / load (rules engine or n8n + optional API endpoint)
 
 ## Phase 5 — Course deliverables
 
@@ -46,4 +48,11 @@ Use this as the team’s working backlog. Check boxes as you complete work; add 
 ## Technical debt / hygiene
 
 - [ ] CI build (optional): `dotnet build` on push
-- [ ] Production config: secrets, HTTPS; Heroku `DATABASE_URL` / connection string documented for the team
+- [x] Heroku `DATABASE_URL` / connection string documented (see README)
+- [x] Main API `Program.cs` serves `Client/` static files (same pattern as TestingAPI) when `../Client` exists
+
+## Suggested next additions (not in sponsor contract — useful)
+
+- Export CSV of filtered tickets for sponsor review
+- SLA columns (time open, time to first triage)
+- Clear “Privacy Badger / adblock” note in README for anyone using strict blockers (allowlist `localhost` + same-origin assets)
