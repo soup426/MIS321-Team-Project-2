@@ -1,6 +1,6 @@
 # MIS 321 — Team Project 2 (Mulholland Real Estate)
 
-Property-management maintenance **triage** demo: ASP.NET Core 9 Web API (EF Core + **MySQL** via Pomelo), Bootstrap + vanilla JS client, and **n8n webhook** triage with **heuristic fallback**. Production DB can live on **Heroku** (`DATABASE_URL` or connection string). Sample data: `Sample Data/Maintenance Report Example.xlsx` → `API/MulhollandRealEstate.API/Data/maintenance-seed.json`.
+Property-management maintenance **triage** demo: ASP.NET Core 9 Web API (EF Core + **MySQL** via Pomelo), Bootstrap + vanilla JS client, and **n8n webhook** triage with **heuristic fallback**. Production DB can live on **Heroku** (`DATABASE_URL` or connection string). Sample data: `Sample Data/Maintenance Report Example.xlsx` → `API/ServerAPI/Data/maintenance-seed.json`.
 
 **Sponsor notes:** see `Intro meeting for group 2.txt` (dashboard, AI triage, human review when confidence is low, tags, filters, risk — plus bonus ideas: images, mobile, skill-based assignment).
 
@@ -8,8 +8,8 @@ Property-management maintenance **triage** demo: ASP.NET Core 9 Web API (EF Core
 
 | Path | Purpose |
 |------|---------|
-| `API/MulhollandRealEstate.API/` | Main Web API, EF migrations, seed JSON |
-| `API/MulhollandRealEstate.TestingAPI/` | Same API wired for local n8n/Heroku testing (typical port **5288**) |
+| `API/ServerAPI/` | Server API (deploy target): main Web API, EF migrations, seed JSON |
+| `API/LocalAPI/` | Local API (dev): same API wired for local dashboard and rapid testing (typical port **5288**) |
 | `Client/` | Static dashboard (`index.html`, `app.js`, `styles.css`); Bootstrap vendored under `Client/vendor/bootstrap/` (no CDN required) |
 | `SQL/` | Optional hand-run MySQL scripts (`mulholland_schema.sql`, `mulholland_workforce.sql`) aligned with n8n/Heroku |
 | `Sample Data/` | Source Excel for seeded tickets |
@@ -20,7 +20,7 @@ Property-management maintenance **triage** demo: ASP.NET Core 9 Web API (EF Core
 
 - **Never** commit real MySQL passwords, `DATABASE_URL`, or n8n secrets in repo.
 - Use **user secrets**, env vars (`DATABASE_URL`, `ConnectionStrings__DefaultConnection`), or Heroku config vars.
-- `appsettings.Development.json` in this repo uses **placeholders** only. Copy `API/MulhollandRealEstate.TestingAPI/appsettings.Development.json.example` if you want a local template.
+- `appsettings.Development.json` in this repo uses **placeholders** only. Copy `API/LocalAPI/appsettings.Development.json.example` if you want a local template.
 - If credentials were ever exposed in git history, **rotate** them in the Heroku / DB provider dashboard.
 
 ## Prerequisites
@@ -42,7 +42,7 @@ Heroku-style URLs: set **`DATABASE_URL`** = `mysql://user:pass@host:port/dbname`
 
 ### Migrations / seed
 
-`Database:AutoMigrate` and `Database:SeedEnabled` in appsettings control whether startup migrates/seeds (default **false** for Heroku to avoid surprise DDL). Use EF migrations from `API/MulhollandRealEstate.API` when you want local schema from code.
+`Database:AutoMigrate` and `Database:SeedEnabled` in appsettings control whether startup migrates/seeds (default **false** for Heroku to avoid surprise DDL). Use EF migrations from `API/ServerAPI` when you want local schema from code.
 
 ## Triage: n8n webhook
 
@@ -63,26 +63,56 @@ The parser also accepts common n8n shapes: top-level **array** (first item), or 
 Configure via user secrets or env:
 
 ```bash
-cd API/MulhollandRealEstate.API
+cd API/ServerAPI
 dotnet user-secrets set "N8n:TriageWebhookUrl" "https://your-n8n.example/webhook/..."
 ```
 
 Human review: **`Triage:HumanReviewBelowConfidence`** (default `0.55`). Set **`N8n:Enabled`** to `false` to force heuristics.
 
+## Image upload
+
+The API supports uploading real images for a ticket (stored on disk in dev/demo) and listing them later.
+
+### Endpoints
+
+- `POST /api/tickets/{requestNumber}/images` — multipart form upload (field name: `file`)
+- `GET /api/tickets/{requestNumber}/images` — list the most recent 50 images with public URLs
+- Uploaded files are served from `GET /uploads/...`
+
+### Config
+
+- **`Uploads:Path`**: where files are stored on disk (default: `<ContentRoot>/uploads`)
+- **`Uploads:PublicBaseUrl`**: base URL used when generating absolute image URLs for n8n (example: `http://localhost:5288`)
+
+Notes:
+- For n8n to fetch images, `Uploads:PublicBaseUrl` must be reachable from the n8n runtime (e.g. use `host.docker.internal` if n8n runs in Docker).
+- Allowed content types: `image/jpeg`, `image/png`, `image/webp`. Max size: 10MB per upload.
+
+### n8n changes (if you want vision)
+
+The n8n webhook request now includes:
+- `hasImage`, `imageType`, `imageSeverityHint`, `imageUrlOrCount` (legacy)
+- **`imageUrls`**: up to 3 absolute URLs (requires `Uploads:PublicBaseUrl`)
+
+If you want the AI to actually “look” at the image, your n8n workflow needs to:
+- Fetch the image bytes from `imageUrls[0]` (HTTP Request node)
+- Send it to a vision-capable model node (or run OCR/labeling first)
+- Merge the extracted signals into your prompt before producing `predictedCategory`, `predictedUrgency`, `confidence`, `tags`, `riskNotes`
+
 ## Run the main API
 
 ```bash
-cd API/MulhollandRealEstate.API
+cd API/ServerAPI
 dotnet run --launch-profile http
 ```
 
 Swagger: `/swagger` (default URL in launch settings, often port **5278**).  
 If `Client/` exists at repo root, the same process also serves the **dashboard** at `/` (static files + default `index.html`).
 
-## Run Testing API + dashboard (recommended for local demo)
+## Run Local API + dashboard (recommended for local demo)
 
 ```bash
-cd API/MulhollandRealEstate.TestingAPI
+cd API/LocalAPI
 dotnet run --launch-profile testing-http
 ```
 
@@ -165,13 +195,46 @@ If the ticket list gets large, add a new endpoint like `GET /api/tickets/stats` 
 
 - `GET /api/employees`
 - `POST /api/employees` — create assignee (dev/demo)
+- `POST /api/employees/{employeeId}/skills` — set skills for auto-assign (Manager/Dispatcher)
 
 `actualCategory` / `actualUrgency` are **evaluation labels** from sample data, not resident input.
+
+## Auth (JWT) + employee dashboards
+
+When `Jwt:Key` is set, the API enables JWT auth and protects most endpoints.
+
+### Config
+
+- `Jwt:Key` (required to enable auth)
+- `Jwt:Issuer` (optional)
+- `Jwt:Audience` (optional)
+- `Jwt:ExpMinutes` (optional, default 240)
+- `Auth:AllowOpenRegistration` (default false) — if true, allows `POST /api/auth/register`
+
+### Endpoints
+
+- `POST /api/auth/login` — returns `{ accessToken, employee }`
+- `POST /api/auth/register` — dev-only when enabled
+- `GET /api/me` — current employee
+
+### Authorization rules (current)
+
+- **Manager/Dispatcher**: can see all tickets and manage employees
+- **Employee**: defaults to “my tickets” when calling `GET /api/tickets` without `assignedEmployeeId`
+- `POST /api/tickets` (submit) is anonymous (resident-style submission)
+
+## Auto-assign (AI → employee by skill)
+
+After triage, if the ticket is unassigned and does not need human review, the API can auto-assign based on `predictedCategory` matching an employee skill.
+
+Config:
+- `AutoAssign:Enabled` (default true)
+
 
 ## Course artifacts
 
 See `Intro meeting for group 2.txt` and `Group Project 2 - Business Startup.pdf`.
 
-## Docker (API only)
+## Docker (Server API only)
 
-`API/MulhollandRealEstate.API/Dockerfile` builds the API. Pass **`DATABASE_URL`** or **`ConnectionStrings__DefaultConnection`** at runtime.
+`API/ServerAPI/Dockerfile` builds the API. Pass **`DATABASE_URL`** or **`ConnectionStrings__DefaultConnection`** at runtime.

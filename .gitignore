@@ -13,3 +13,7 @@
 # Optional local overrides (never commit real passwords)
 **/appsettings.Development.local.json
 **/appsettings.*.local.json
+**/appsettings.Secrets.json
+
+# Uploaded files (runtime)
+**/uploads/

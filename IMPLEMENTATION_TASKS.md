@@ -6,7 +6,7 @@ Use this as the team’s working backlog. Check boxes as you complete work; add 
 
 - [x] `dotnet ef database update` succeeds against MySQL (local or Heroku URL in env) — *verify on each machine*
 - [x] API runs (`dotnet run`) and Swagger loads
-- [x] Client loads tickets from API (dashboard at `http://localhost:5288/` when using TestingAPI; static files served by dotnet)
+- [x] Client loads tickets from API (dashboard at `http://localhost:5288/` when using LocalAPI; static files served by dotnet)
 - [x] n8n triage webhook URL configurable; responses parse (or heuristic fallback works)
 
 ## Phase 1 — Core product (MVP)
@@ -49,7 +49,7 @@ Use this as the team’s working backlog. Check boxes as you complete work; add 
 
 - [ ] CI build (optional): `dotnet build` on push
 - [x] Heroku `DATABASE_URL` / connection string documented (see README)
-- [x] Main API `Program.cs` serves `Client/` static files (same pattern as TestingAPI) when `../Client` exists
+- [x] Server API `Program.cs` serves `Client/` static files (same pattern as LocalAPI) when `../Client` exists
 
 ## Suggested next additions (not in sponsor contract — useful)
 
