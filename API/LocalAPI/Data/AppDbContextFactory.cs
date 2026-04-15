@@ -22,7 +22,8 @@ public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
         var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
 
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-        optionsBuilder.UseMySql(connectionString, serverVersion);
+        optionsBuilder.UseMySql(connectionString, serverVersion, mySqlOptions =>
+            mySqlOptions.EnableRetryOnFailure());
         return new AppDbContext(optionsBuilder.Options);
     }
 }

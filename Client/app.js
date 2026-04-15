@@ -2,6 +2,11 @@ const $ = (id) => document.getElementById(id);
 let __employees = null;
 let __activeTicket = null; // requestNumber
 let __ticketModal = null;
+let __activeTicketHasImages = false;
+let __modalOpen = false;
+let __autoInterval = null;
+let __refreshInFlight = false;
+let __assignDebounceTimers = new Map(); // requestNumber -> timeoutId
 const __employeeNameById = () => new Map((__employees || []).map((e) => [String(e.id), e.fullName]));
 
 function apiBase() {
@@ -15,8 +20,51 @@ function showAlert(message, kind = "danger") {
   el.classList.remove("d-none");
 }
 
+function toast(message, kind = "secondary") {
+  const host = $("toastHost");
+  if (!host || typeof bootstrap === "undefined") return;
+  const el = document.createElement("div");
+  el.className = `toast align-items-center text-bg-${kind} border-0`;
+  el.setAttribute("role", "status");
+  el.setAttribute("aria-live", "polite");
+  el.setAttribute("aria-atomic", "true");
+  el.innerHTML = `
+    <div class="d-flex">
+      <div class="toast-body">${escapeHtml(message)}</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  `;
+  host.appendChild(el);
+  const t = new bootstrap.Toast(el, { delay: 2600 });
+  el.addEventListener("hidden.bs.toast", () => el.remove());
+  t.show();
+}
+
 function hideAlert() {
   $("alert").classList.add("d-none");
+}
+
+function isStaffPage() {
+  const p = window.location?.pathname || "";
+  return p.endsWith("/maintenance.html") || p.endsWith("/employee-dashboard.html");
+}
+
+function normalizeErrorText(text) {
+  const raw = (text || "").trim();
+  if (!raw) return "";
+  // Common case: API returns JSON { message: "..." } or { error: "..." }
+  if (raw.startsWith("{") || raw.startsWith("[")) {
+    try {
+      const j = JSON.parse(raw);
+      if (typeof j === "string") return j;
+      if (j?.message) return String(j.message);
+      if (j?.error) return String(j.error);
+      if (j?.title) return String(j.title);
+    } catch {}
+  }
+  // Strip HTML error pages.
+  if (raw.startsWith("<!DOCTYPE") || raw.startsWith("<html")) return "Request failed (server returned HTML).";
+  return raw;
 }
 
 async function fetchJson(path, options = {}) {
@@ -34,14 +82,14 @@ async function fetchJson(path, options = {}) {
   const text = await res.text();
   if (res.status === 401) {
     // Force maintenance users to login if token expired/missing.
-    if (window.location?.pathname.endsWith("/maintenance.html")) {
+    if (isStaffPage()) {
       localStorage.removeItem("maintenanceAccessToken");
       localStorage.removeItem("maintenanceEmployee");
       window.location.href = "/maintenance-login.html";
       return null;
     }
   }
-  if (!res.ok) throw new Error(text || res.statusText);
+  if (!res.ok) throw new Error(normalizeErrorText(text) || res.statusText);
   return text ? JSON.parse(text) : null;
 }
 
@@ -66,10 +114,6 @@ async function loadSummary() {
     $("sumTotal").textContent = s.total;
     $("sumTriaged").textContent = s.triaged;
     $("sumHuman").textContent = s.needsHumanReview;
-    $("sumCat").textContent =
-      s.comparedRows > 0 ? `${s.categoryMatches} / ${s.comparedRows}` : "—";
-    $("sumUrg").textContent =
-      s.comparedRows > 0 ? `${s.urgencyMatches} / ${s.comparedRows}` : "—";
   } catch (e) {
     showAlert(`Summary failed: ${e.message}`);
   }
@@ -118,43 +162,41 @@ function renderRow(t) {
     : `${t.predictedCategory || "—"} ${badgeUrgency(t.predictedUrgency)}`;
   const conf =
     isGenerating ? "—" : (t.confidenceScore != null ? (Number(t.confidenceScore) * 100).toFixed(0) + "%" : "—");
-  const tag = isGenerating
+  const review = isGenerating
     ? '<span class="text-muted">—</span>'
-    : (t.needsHumanReview ? '<span class="badge text-bg-danger">Needs review</span>' : '<span class="text-muted">—</span>');
+    : (t.needsHumanReview ? '<span class="badge text-bg-danger">Needs review</span>' : '<span class="badge text-bg-secondary">OK</span>');
   const status = isGenerating ? '<span class="text-muted">—</span>' : badgeStatus(t.status);
   const assignee = isGenerating
     ? '<span class="text-muted">—</span>'
     : (t.assignedEmployeeName ? escapeHtml(t.assignedEmployeeName) : '<span class="text-muted">Unassigned</span>');
 
   const canAssignInline = !isGenerating && Array.isArray(__employees) && __employees.length > 0;
-  const selectHtml = (() => {
-    if (!canAssignInline) return '<select class="form-select form-select-sm assignee-select" disabled><option>—</option></select>';
+  const assigneeControl = (() => {
+    if (!canAssignInline) return '<span class="text-muted">—</span>';
     const opts = [
       `<option value="">Unassigned</option>`,
       ...__employees.map((e) => `<option value="${e.id}">${escapeHtml(e.fullName)}</option>`)
     ].join("");
-    const current = t.assignedEmployeeId != null ? String(t.assignedEmployeeId) : "";
-    return `<select class="form-select form-select-sm assignee-select" data-assign-select="${t.requestNumber}">${opts}</select>
-      <script>/*noop*/</script>`;
+    return `
+      <div class="mre-assignee-inline">
+        <select class="form-select form-select-sm assignee-select" data-assign-select="${t.requestNumber}">${opts}</select>
+      </div>
+    `;
   })();
   tr.innerHTML = `
     <td>${t.requestNumber}</td>
     <td class="text-nowrap small">${fmtWhen(t.requestTimestamp)}</td>
     <td class="small"><strong>${t.propertyId}</strong> ${t.unitNumber}<br/><span class="text-muted">${t.buildingType}</span></td>
-    <td class="small cell-truncate" title="${escapeHtml(t.requestText)}">${escapeHtml(t.requestText)}</td>
+    <td class="small mre-col-request cell-truncate" title="${escapeHtml(t.requestText)}">${escapeHtml(t.requestText)}</td>
     <td class="small">${pred}</td>
     <td class="small">${conf}</td>
-    <td class="small">${tag}</td>
+    <td class="small">${review}</td>
     <td class="small">${status}</td>
-    <td class="small">${assignee}</td>
-    <td class="text-end">
+    <td class="small mre-assignee-cell">${assigneeControl}</td>
+    <td class="text-end mre-col-actions">
       <div class="btn-group btn-group-sm" role="group">
         <button type="button" class="btn btn-outline-primary" data-view="${t.requestNumber}">View</button>
         <button type="button" class="btn btn-outline-secondary" data-triage="${t.requestNumber}">Triage</button>
-      </div>
-      <div class="d-inline-flex align-items-center gap-1 ms-2">
-        ${selectHtml}
-        <button type="button" class="btn btn-outline-primary btn-sm" data-assign-row="${t.requestNumber}" ${canAssignInline ? "" : "disabled"}>Assign</button>
       </div>
     </td>
   `;
@@ -175,6 +217,14 @@ function escapeHtml(s) {
 
 async function loadTickets() {
   hideAlert();
+  if (__refreshInFlight) return;
+  __refreshInFlight = true;
+  const loading = $("tableLoading");
+  if (loading) loading.classList.remove("d-none");
+  const btnLoad = $("btnLoad");
+  const btnAll = $("btnTriageAll");
+  if (btnLoad) btnLoad.disabled = true;
+  if (btnAll) btnAll.disabled = true;
   const urgency = $("filterUrgency").value;
   const human = $("filterHuman").checked;
   const status = $("filterStatus")?.value || "";
@@ -190,7 +240,13 @@ async function loadTickets() {
     const rows = await fetchJson(path);
     const tbody = $("tbody");
     tbody.replaceChildren();
-    for (const t of rows) tbody.appendChild(renderRow(t));
+    if (!rows || rows.length === 0) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="10" class="py-4 text-center text-muted">No tickets match your filters.</td>`;
+      tbody.appendChild(tr);
+    } else {
+      for (const t of rows) tbody.appendChild(renderRow(t));
+    }
     await loadSummary();
 
     // If any tickets are still waiting for AI triage, auto-refresh briefly.
@@ -202,6 +258,11 @@ async function loadTickets() {
     }
   } catch (e) {
     showAlert(`Load failed: ${e.message}. Is the API running? CORS is open; use a local static server for this page (not file://).`);
+  } finally {
+    if (loading) loading.classList.add("d-none");
+    if (btnLoad) btnLoad.disabled = false;
+    if (btnAll) btnAll.disabled = false;
+    __refreshInFlight = false;
   }
 }
 
@@ -262,11 +323,21 @@ async function assignTicketInline(requestNumber) {
   const sel = document.querySelector(`[data-assign-select="${requestNumber}"]`);
   if (!sel || sel.disabled) return;
   const employeeId = sel.value;
-  await fetchJson(`/api/tickets/${requestNumber}/assign`, {
-    method: "POST",
-    body: JSON.stringify({ employeeId: employeeId ? Number(employeeId) : 0, source: "manual" }),
-  });
-  await loadTickets();
+  sel.disabled = true;
+  sel.classList.add("opacity-75");
+  try {
+    await fetchJson(`/api/tickets/${requestNumber}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ employeeId: employeeId ? Number(employeeId) : 0, source: "manual" }),
+    });
+    toast("Assignee saved.", "success");
+    await loadTickets();
+  } finally {
+    try {
+      sel.disabled = false;
+      sel.classList.remove("opacity-75");
+    } catch {}
+  }
 }
 
 function renderEvent(ev) {
@@ -287,6 +358,7 @@ function renderEvent(ev) {
 async function openTicket(num) {
   hideAlert();
   __activeTicket = Number(num);
+  __activeTicketHasImages = false;
 
   if (!__ticketModal) __ticketModal = new bootstrap.Modal($("ticketModal"));
   $("mReqNum").textContent = `#${num}`;
@@ -342,9 +414,95 @@ async function openTicket(num) {
 
   $("mCloseBtn").disabled = (t.status || "Open") === "Closed";
   $("mReopenBtn").disabled = (t.status || "Open") !== "Closed";
+  // Show only the action that makes sense.
+  if ((t.status || "Open") === "Closed") {
+    $("mCloseBtn")?.classList.add("d-none");
+    $("mReopenBtn")?.classList.remove("d-none");
+  } else {
+    $("mCloseBtn")?.classList.remove("d-none");
+    $("mReopenBtn")?.classList.add("d-none");
+  }
 
   await refreshEvents();
+  await refreshImages().catch(() => {});
   __ticketModal.show();
+}
+
+function renderImages(list) {
+  const box = $("mImages");
+  if (!box) return;
+  box.replaceChildren();
+  if (!list || !list.length) {
+    const empty = document.createElement("div");
+    empty.className = "small text-muted";
+    empty.textContent = "No photos uploaded.";
+    box.appendChild(empty);
+    return;
+  }
+  for (const img of list.slice(0, 50)) {
+    const a = document.createElement("a");
+    a.href = img.url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    const el = document.createElement("img");
+    el.src = img.url;
+    el.alt = img.fileName || "ticket image";
+    el.loading = "lazy";
+    el.className = "rounded border";
+    el.style.width = "120px";
+    el.style.height = "90px";
+    el.style.objectFit = "cover";
+    a.appendChild(el);
+    box.appendChild(a);
+  }
+}
+
+async function refreshImages() {
+  if (!__activeTicket) return;
+  const wrap = $("mImagesWrap");
+  if (!wrap) return;
+  try {
+    const list = await fetchJson(`/api/tickets/${__activeTicket}/images`);
+    __activeTicketHasImages = Array.isArray(list) && list.length > 0;
+    renderImages(list);
+  } catch (e) {
+    // Images are optional; show a light hint but don't break the modal.
+    renderImages([]);
+    toast(`Images unavailable: ${e.message}`, "warning");
+  }
+}
+
+async function uploadActiveTicketImage() {
+  if (!__activeTicket) return;
+  const input = $("mImageFile");
+  if (!input || !input.files || input.files.length === 0) {
+    toast("Choose a file first.", "secondary");
+    return;
+  }
+  const file = input.files[0];
+  const btn = $("mUploadImageBtn");
+  if (btn) btn.disabled = true;
+  try {
+    const token = localStorage.getItem("maintenanceAccessToken");
+    const headers = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`${apiBase()}/api/tickets/${__activeTicket}/images`, {
+      method: "POST",
+      headers,
+      body: fd,
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(normalizeErrorText(text) || res.statusText);
+    input.value = "";
+    toast("Uploaded.", "success");
+    await refreshImages();
+  } catch (e) {
+    showAlert(`Upload failed: ${e.message}`);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function refreshEvents() {
@@ -456,45 +614,92 @@ async function submitTicket(e) {
   }
 }
 
-$("btnLoad").addEventListener("click", loadTickets);
-$("btnTriageAll").addEventListener("click", triageAll);
-$("filterUrgency").addEventListener("change", loadTickets);
-$("filterHuman").addEventListener("change", loadTickets);
-$("filterStatus").addEventListener("change", loadTickets);
-$("filterAssignee").addEventListener("change", loadTickets);
-$("tbody").addEventListener("click", (e) => {
+$("btnLoad")?.addEventListener("click", loadTickets);
+$("btnTriageAll")?.addEventListener("click", triageAll);
+$("filterUrgency")?.addEventListener("change", loadTickets);
+$("filterHuman")?.addEventListener("change", loadTickets);
+$("filterStatus")?.addEventListener("change", loadTickets);
+$("filterAssignee")?.addEventListener("change", loadTickets);
+$("tbody")?.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-triage]");
   if (!btn) return;
   triageOne(btn.getAttribute("data-triage"));
 });
-$("tbody").addEventListener("click", (e) => {
+$("tbody")?.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-view]");
   if (!btn) return;
   openTicket(btn.getAttribute("data-view")).catch((err) => showAlert(err.message));
 });
-$("tbody").addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-assign-row]");
-  if (!btn) return;
-  assignTicketInline(btn.getAttribute("data-assign-row")).catch((err) => showAlert(err.message));
+// Auto-save assignee on dropdown change (full dashboard table view)
+$("tbody")?.addEventListener("change", (e) => {
+  const sel = e.target.closest?.("[data-assign-select]");
+  if (!sel) return;
+  const requestNumber = sel.getAttribute("data-assign-select");
+  if (!requestNumber) return;
+
+  // Debounce changes so fast scroll/select doesn't spam the API.
+  const existing = __assignDebounceTimers.get(requestNumber);
+  if (existing) window.clearTimeout(existing);
+  const t = window.setTimeout(() => {
+    __assignDebounceTimers.delete(requestNumber);
+    assignTicketInline(requestNumber).catch((err) => {
+      toast(`Assign failed: ${err.message}`, "danger");
+      showAlert(err.message);
+      try {
+        sel.disabled = false;
+        sel.classList.remove("opacity-75");
+      } catch {}
+    });
+  }, 350);
+  __assignDebounceTimers.set(requestNumber, t);
 });
-$("submitForm").addEventListener("submit", submitTicket);
-$("mAssignBtn").addEventListener("click", () => assignActiveTicket().catch((err) => showAlert(err.message)));
-$("mCloseBtn").addEventListener("click", () => closeActiveTicket().catch((err) => showAlert(err.message)));
-$("mReopenBtn").addEventListener("click", () => reopenActiveTicket().catch((err) => showAlert(err.message)));
-$("mTriageBtn").addEventListener("click", () => triageActiveTicket().catch((err) => showAlert(err.message)));
-$("mRefreshEvents").addEventListener("click", () => refreshEvents().catch((err) => showAlert(err.message)));
-$("mNoteForm").addEventListener("submit", (e) => addNoteActiveTicket(e).catch((err) => showAlert(err.message)));
+$("submitForm")?.addEventListener("submit", submitTicket);
+$("mAssignBtn")?.addEventListener("click", () => assignActiveTicket().catch((err) => showAlert(err.message)));
+$("mCloseBtn")?.addEventListener("click", () => closeActiveTicket().catch((err) => showAlert(err.message)));
+$("mReopenBtn")?.addEventListener("click", () => reopenActiveTicket().catch((err) => showAlert(err.message)));
+$("mTriageBtn")?.addEventListener("click", () => triageActiveTicket().catch((err) => showAlert(err.message)));
+$("mUploadImageBtn")?.addEventListener("click", () => uploadActiveTicketImage().catch((err) => showAlert(err.message)));
+$("mNoteForm")?.addEventListener("submit", (e) => addNoteActiveTicket(e).catch((err) => showAlert(err.message)));
 
 hydrateAssigneeFilter().finally(() => loadTickets());
+
+// Background auto-refresh (AJAX). No full page reload.
+function startAutoRefresh() {
+  if (__autoInterval) return;
+  __autoInterval = window.setInterval(() => {
+    // Only auto-refresh on the table view.
+    if (!(window.location?.pathname || "").endsWith("/maintenance.html")) return;
+    if (document.hidden) return;
+    if (__modalOpen) return;
+    // Avoid stomping on an active dropdown interaction.
+    if (document.activeElement && document.activeElement.matches?.("select, input, textarea")) return;
+    loadTickets().catch(() => {});
+  }, 8000);
+}
+
+startAutoRefresh();
+
+// Pause refresh while modal is open (prevents UI "jumping" during edits).
+try {
+  const modalEl = $("ticketModal");
+  if (modalEl) {
+    modalEl.addEventListener("show.bs.modal", () => { __modalOpen = true; });
+    modalEl.addEventListener("hidden.bs.modal", () => { __modalOpen = false; });
+  }
+} catch {}
 
 // Maintenance navbar auth UX
 if (window.location?.pathname.endsWith("/maintenance.html")) {
   const token = localStorage.getItem("maintenanceAccessToken");
   const logout = $("btnLogout");
   const loginLink = $("btnLoginLink");
+  const empDash = $("btnEmployeeDash");
   if (token) {
     logout?.classList.remove("d-none");
     loginLink?.classList.add("d-none");
+    empDash?.classList.remove("d-none");
+  } else {
+    empDash?.classList.add("d-none");
   }
   logout?.addEventListener("click", () => {
     localStorage.removeItem("maintenanceAccessToken");

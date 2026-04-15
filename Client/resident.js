@@ -12,6 +12,26 @@ function showAlert(message, kind = "danger") {
   el.classList.remove("d-none");
 }
 
+function toast(message, kind = "secondary") {
+  const host = $("toastHost");
+  if (!host || typeof bootstrap === "undefined") return;
+  const el = document.createElement("div");
+  el.className = `toast align-items-center text-bg-${kind} border-0`;
+  el.setAttribute("role", "status");
+  el.setAttribute("aria-live", "polite");
+  el.setAttribute("aria-atomic", "true");
+  el.innerHTML = `
+    <div class="d-flex">
+      <div class="toast-body">${String(message || "")}</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  `;
+  host.appendChild(el);
+  const t = new bootstrap.Toast(el, { delay: 2400 });
+  el.addEventListener("hidden.bs.toast", () => el.remove());
+  t.show();
+}
+
 function hideAlert() {
   $("alert").classList.add("d-none");
 }
@@ -50,6 +70,7 @@ async function submitResident(e) {
     if (!res.ok) throw new Error(text || res.statusText);
     const json = text ? JSON.parse(text) : {};
     showAlert(`Submitted. Ticket #${json.requestNumber}.`, "success");
+    toast(`Ticket #${json.requestNumber} created.`, "success");
     setStatus("");
     form.reset();
     renderPreviews([]);

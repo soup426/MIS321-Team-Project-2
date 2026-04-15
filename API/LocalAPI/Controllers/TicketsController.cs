@@ -459,6 +459,48 @@ public class TicketsController : ControllerBase
         }).ToList());
     }
 
+    [HttpGet("recent-events")]
+    public async Task<ActionResult<IReadOnlyList<TicketEventDto>>> RecentEvents([FromQuery] int? take, CancellationToken ct)
+    {
+        var n = take is > 0 and <= 200 ? take.Value : 50;
+
+        var list = await _db.MaintenanceRequestEvents.AsNoTracking()
+            .Join(
+                _db.MaintenanceRequests.AsNoTracking(),
+                ev => ev.MaintenanceRequestId,
+                r => r.Id,
+                (ev, r) => new { ev, r })
+            .OrderByDescending(x => x.ev.EventTimestamp)
+            .Take(n)
+            .ToListAsync(ct);
+
+        static string? ExtractNote(string? detailsJson)
+        {
+            if (string.IsNullOrWhiteSpace(detailsJson)) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(detailsJson);
+                if (doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("note", out var n))
+                    return n.GetString();
+                if (doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("message", out var m))
+                    return m.GetString();
+            }
+            catch { }
+            return null;
+        }
+
+        return Ok(list.Select(x => new TicketEventDto
+        {
+            Id = x.ev.Id,
+            RequestNumber = x.r.RequestNumber,
+            EventType = x.ev.EventType,
+            CreatedAt = x.ev.EventTimestamp,
+            Author = x.ev.Actor,
+            Note = ExtractNote(x.ev.DetailsJson),
+            DetailsJson = x.ev.DetailsJson
+        }).ToList());
+    }
+
     public sealed class AssignTicketDto
     {
         public long EmployeeId { get; set; }

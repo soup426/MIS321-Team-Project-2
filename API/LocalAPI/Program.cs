@@ -40,7 +40,8 @@ var connectionString = MysqlConnectionResolver.Resolve(builder.Configuration);
 var serverVersion = new MySqlServerVersion(new Version(8, 0, 36));
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseMySql(connectionString, serverVersion));
+    options.UseMySql(connectionString, serverVersion, mySqlOptions =>
+        mySqlOptions.EnableRetryOnFailure()));
 
 builder.Services.AddCors(options =>
 {

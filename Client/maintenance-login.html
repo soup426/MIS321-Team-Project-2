@@ -17,10 +17,17 @@
 
   <main class="container pb-5" style="max-width: 520px;">
     <div id="alert" class="alert d-none" role="alert"></div>
+    <div class="position-fixed top-0 end-0 p-3" style="z-index: 1080">
+      <div id="toastHost" class="toast-container"></div>
+    </div>
 
-    <div class="card shadow-sm">
+    <div class="card shadow-sm mre-surface">
       <div class="card-body">
-        <h5 class="mb-3">Sign in</h5>
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h5 class="mb-0">Sign in</h5>
+          <span class="badge text-bg-secondary">Staff</span>
+        </div>
+        <div class="text-muted small mb-3">Use your maintenance credentials to open your personal dashboard.</div>
         <form id="loginForm" class="vstack gap-3">
           <div>
             <label class="form-label">Username</label>
@@ -34,7 +41,6 @@
             <button class="btn btn-dark" type="submit" id="btnLogin">Login</button>
             <a class="btn btn-outline-secondary" href="/">Cancel</a>
           </div>
-          <div class="small text-muted">This calls <code>POST /api/auth/login</code> and stores a JWT in localStorage.</div>
         </form>
       </div>
     </div>

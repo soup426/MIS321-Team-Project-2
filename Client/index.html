@@ -11,18 +11,35 @@
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
     <div class="container-fluid">
       <span class="navbar-brand">Mulholland Real Estate</span>
-      <span class="navbar-text text-secondary small">Maintenance & resident portal</span>
+      <span class="navbar-text text-secondary small">Maintenance + resident portal</span>
     </div>
   </nav>
 
   <main class="container pb-5" style="max-width: 1000px;">
+    <div class="mre-surface rounded-4 border p-4 p-md-5 shadow-sm mb-4">
+      <div class="d-flex align-items-end gap-3 flex-wrap">
+        <div>
+          <div class="text-muted small">Welcome</div>
+          <h1 class="h3 mb-1">Maintenance, triage, and dispatch.</h1>
+          <div class="text-muted">Residents submit requests. Staff triage, assign, and close tickets.</div>
+        </div>
+        <div class="ms-md-auto">
+          <span class="badge text-bg-secondary">Local</span>
+          <span class="badge text-bg-secondary">MySQL</span>
+          <span class="badge text-bg-secondary">n8n triage</span>
+        </div>
+      </div>
+    </div>
     <div class="row g-4">
       <div class="col-md-6">
         <div class="card shadow-sm h-100">
           <div class="card-body">
             <h5 class="card-title">Resident</h5>
-            <p class="text-muted mb-3">Submit a maintenance request with optional photos. No login.</p>
-            <a class="btn btn-primary" href="resident.html">Submit a request</a>
+            <p class="text-muted mb-3">Submit a request with optional photos. No login required.</p>
+            <div class="d-flex gap-2 flex-wrap">
+              <a class="btn btn-primary" href="resident.html">Submit a request</a>
+              <a class="btn btn-outline-primary" href="resident.html#photos">Add photos</a>
+            </div>
           </div>
         </div>
       </div>
@@ -30,8 +47,11 @@
         <div class="card shadow-sm h-100">
           <div class="card-body">
             <h5 class="card-title">Maintenance</h5>
-            <p class="text-muted mb-3">View and triage tickets, assign staff, and close requests. Login required.</p>
-            <a class="btn btn-dark" href="maintenance-login.html" id="btnMaintenance">Open dashboard</a>
+            <p class="text-muted mb-3">Triage tickets, assign staff, and close requests. Login required.</p>
+            <div class="d-flex gap-2 flex-wrap">
+              <a class="btn btn-dark" href="maintenance-login.html" id="btnMaintenance">Open dashboard</a>
+              <a class="btn btn-outline-secondary" href="maintenance.html">Full table view</a>
+            </div>
           </div>
         </div>
       </div>
@@ -46,7 +66,7 @@
         const token = localStorage.getItem("maintenanceAccessToken");
         if (token) {
           const btn = document.getElementById("btnMaintenance");
-          if (btn) btn.href = "maintenance.html";
+          if (btn) btn.href = "employee-dashboard.html";
         }
       } catch {}
     })();
