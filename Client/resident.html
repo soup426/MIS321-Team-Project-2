@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mulholland RE — Submit maintenance request</title>
+  <link href="vendor/bootstrap/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="bg-body-tertiary">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="/">Mulholland Real Estate</a>
+      <span class="navbar-text text-secondary small">Resident maintenance request</span>
+      <div class="ms-auto">
+        <a class="btn btn-outline-light btn-sm" href="/">Dashboard</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container pb-5" style="max-width: 920px;">
+    <div id="alert" class="alert d-none" role="alert"></div>
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="mb-3">Submit a maintenance request</h5>
+        <form id="residentForm" class="row g-3" enctype="multipart/form-data">
+          <div class="col-md-3">
+            <label class="form-label">Property</label>
+            <input class="form-control" name="propertyId" placeholder="P01" required />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Unit</label>
+            <input class="form-control" name="unitNumber" placeholder="1A" required />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Building type (optional)</label>
+            <input class="form-control" name="buildingType" placeholder="Garden" />
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Your name (optional)</label>
+            <input class="form-control" name="contactName" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Phone or email (optional)</label>
+            <input class="form-control" name="contactPhoneOrEmail" />
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Issue</label>
+            <textarea class="form-control" name="requestText" rows="4" placeholder="Describe the problem..." required></textarea>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Photos (optional)</label>
+            <input class="form-control" type="file" name="images" id="images" accept="image/png,image/jpeg,image/webp" multiple />
+            <div class="form-text">JPEG/PNG/WebP. Total upload limit ~15MB.</div>
+            <div id="previews" class="d-flex flex-wrap gap-2 mt-2"></div>
+          </div>
+
+          <div class="col-12 d-flex align-items-center gap-2">
+            <button class="btn btn-primary" type="submit" id="btnSubmit">Submit</button>
+            <span class="text-muted small" id="statusText"></span>
+          </div>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <script src="vendor/bootstrap/bootstrap.bundle.min.js"></script>
+  <script src="resident.js?v=1"></script>
+</body>
+</html>
+

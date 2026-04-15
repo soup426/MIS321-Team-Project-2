@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using MulhollandRealEstate.API.Models;
+using MulhollandRealEstate.API.Services;
 
 namespace MulhollandRealEstate.API.Data;
 
@@ -60,6 +61,99 @@ public static class DbSeeder
                 ActualCategory = r.ActualCategory,
                 ActualUrgency = r.ActualUrgency
             });
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    public static async Task SeedDemoUsersAsync(AppDbContext db, CancellationToken ct = default)
+    {
+        // Skills
+        var skills = new[]
+        {
+            new Skill { SkillCode = "plumbing", DisplayName = "Plumbing" },
+            new Skill { SkillCode = "electrical", DisplayName = "Electrical" },
+            new Skill { SkillCode = "hvac", DisplayName = "HVAC" },
+            new Skill { SkillCode = "appliance", DisplayName = "Appliance" },
+            new Skill { SkillCode = "pest", DisplayName = "Pest control" },
+            new Skill { SkillCode = "drywall", DisplayName = "Drywall / paint" },
+        };
+
+        foreach (var s in skills)
+        {
+            if (!await db.Skills.AnyAsync(x => x.SkillCode == s.SkillCode, ct))
+                db.Skills.Add(s);
+        }
+        await db.SaveChangesAsync(ct);
+
+        var byCode = await db.Skills.AsNoTracking()
+            .Where(s => s.SkillCode != null && s.SkillCode != "")
+            .ToDictionaryAsync(s => s.SkillCode, s => s.Id, StringComparer.OrdinalIgnoreCase, ct);
+
+        // If the DB was left half-seeded (crash), ensure required skill codes exist.
+        foreach (var s in skills)
+        {
+            if (byCode.ContainsKey(s.SkillCode)) continue;
+            db.Skills.Add(new Skill { SkillCode = s.SkillCode, DisplayName = s.DisplayName });
+        }
+        if (db.ChangeTracker.HasChanges())
+        {
+            await db.SaveChangesAsync(ct);
+            byCode = await db.Skills.AsNoTracking()
+                .Where(s => s.SkillCode != null && s.SkillCode != "")
+                .ToDictionaryAsync(s => s.SkillCode, s => s.Id, StringComparer.OrdinalIgnoreCase, ct);
+        }
+
+        const string demoPassword = "demo1234!";
+
+        var employees = new[]
+        {
+            new Employee { FullName = "Alex Tech", Username = "alex", Role = "Maintenance", Active = true, MaxOpenTickets = 8, PasswordHash = PasswordHashing.Hash(demoPassword) },
+            new Employee { FullName = "Taylor Plumber", Username = "taylor", Role = "Maintenance", Active = true, MaxOpenTickets = 8, PasswordHash = PasswordHashing.Hash(demoPassword) },
+            new Employee { FullName = "Sam Electric", Username = "sam", Role = "Maintenance", Active = true, MaxOpenTickets = 8, PasswordHash = PasswordHashing.Hash(demoPassword) },
+            new Employee { FullName = "Pat HVAC", Username = "pat", Role = "Maintenance", Active = true, MaxOpenTickets = 8, PasswordHash = PasswordHashing.Hash(demoPassword) },
+            new Employee { FullName = "Morgan Manager", Username = "morgan", Role = "Manager", Active = true, MaxOpenTickets = 20, PasswordHash = PasswordHashing.Hash(demoPassword) },
+        };
+
+        foreach (var e in employees)
+        {
+            var existing = await db.Employees.FirstOrDefaultAsync(x => x.Username == e.Username, ct);
+            if (existing is null)
+            {
+                db.Employees.Add(e);
+            }
+            else
+            {
+                // Fill missing auth fields for old demo rows.
+                existing.Active = true;
+                if (string.IsNullOrWhiteSpace(existing.FullName)) existing.FullName = e.FullName;
+                if (string.IsNullOrWhiteSpace(existing.Role)) existing.Role = e.Role;
+                if (existing.MaxOpenTickets <= 0) existing.MaxOpenTickets = e.MaxOpenTickets;
+                if (string.IsNullOrWhiteSpace(existing.PasswordHash)) existing.PasswordHash = PasswordHashing.Hash(demoPassword);
+            }
+        }
+        await db.SaveChangesAsync(ct);
+
+        var empByUsername = await db.Employees.AsNoTracking()
+            .Where(e => e.Username != null && e.Username != "")
+            .ToDictionaryAsync(e => e.Username, e => e.Id, ct);
+
+        // Skill mappings (proficiency 1-5)
+        var mappings = new[]
+        {
+            new EmployeeSkill { EmployeeId = empByUsername["alex"], SkillId = byCode["appliance"], Proficiency = 4 },
+            new EmployeeSkill { EmployeeId = empByUsername["alex"], SkillId = byCode["drywall"], Proficiency = 3 },
+            new EmployeeSkill { EmployeeId = empByUsername["taylor"], SkillId = byCode["plumbing"], Proficiency = 5 },
+            new EmployeeSkill { EmployeeId = empByUsername["sam"], SkillId = byCode["electrical"], Proficiency = 5 },
+            new EmployeeSkill { EmployeeId = empByUsername["pat"], SkillId = byCode["hvac"], Proficiency = 5 },
+            new EmployeeSkill { EmployeeId = empByUsername["pat"], SkillId = byCode["appliance"], Proficiency = 3 },
+            new EmployeeSkill { EmployeeId = empByUsername["alex"], SkillId = byCode["pest"], Proficiency = 2 },
+        };
+
+        foreach (var m in mappings)
+        {
+            if (!await db.EmployeeSkills.AnyAsync(x => x.EmployeeId == m.EmployeeId && x.SkillId == m.SkillId, ct))
+                db.EmployeeSkills.Add(m);
         }
 
         await db.SaveChangesAsync(ct);

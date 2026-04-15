@@ -97,6 +97,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var autoMigrate = app.Configuration.GetValue("Database:AutoMigrate", false);
     var seedEnabled = app.Configuration.GetValue("Database:SeedEnabled", false);
+    var seedDemoUsers = app.Configuration.GetValue("Database:SeedDemoUsers", false);
     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
     var ct = cts.Token;
 
@@ -104,6 +105,8 @@ using (var scope = app.Services.CreateScope())
         await db.Database.MigrateAsync(ct);
     if (seedEnabled)
         await DbSeeder.SeedAsync(db, app.Environment);
+    if (seedDemoUsers)
+        await DbSeeder.SeedDemoUsersAsync(db, ct);
 
     // Some environments (e.g. Heroku-provisioned DBs) may already have schema created outside EF migrations.
     // Ensure the image table exists so uploads work even if __EFMigrationsHistory isn't present.

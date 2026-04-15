@@ -23,6 +23,8 @@ async function fetchJson(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body != null && !headers["Content-Type"])
     headers["Content-Type"] = "application/json";
+  const token = localStorage.getItem("maintenanceAccessToken");
+  if (token && !headers["Authorization"]) headers["Authorization"] = `Bearer ${token}`;
   const method = (options.method || "GET").toUpperCase();
   const res = await fetch(`${apiBase()}${path}`, {
     cache: method === "GET" ? "no-store" : undefined,
@@ -30,6 +32,15 @@ async function fetchJson(path, options = {}) {
     headers,
   });
   const text = await res.text();
+  if (res.status === 401) {
+    // Force maintenance users to login if token expired/missing.
+    if (window.location?.pathname.endsWith("/maintenance.html")) {
+      localStorage.removeItem("maintenanceAccessToken");
+      localStorage.removeItem("maintenanceEmployee");
+      window.location.href = "/maintenance-login.html";
+      return null;
+    }
+  }
   if (!res.ok) throw new Error(text || res.statusText);
   return text ? JSON.parse(text) : null;
 }
@@ -37,12 +48,15 @@ async function fetchJson(path, options = {}) {
 // Surface any unexpected runtime errors in the UI.
 window.addEventListener("error", (e) => {
   try {
+    if (typeof e?.message === "string" && e.message.includes("ResizeObserver loop")) return;
     showAlert(`UI error: ${e.message}`);
   } catch { }
 });
 window.addEventListener("unhandledrejection", (e) => {
   try {
-    showAlert(`UI error: ${e.reason?.message || e.reason || "Unhandled promise rejection"}`);
+    const msg = e?.reason?.message || e?.reason || "";
+    if (typeof msg === "string" && msg.includes("ResizeObserver loop")) return;
+    showAlert(`UI error: ${msg || "Unhandled promise rejection"}`);
   } catch { }
 });
 
@@ -228,6 +242,20 @@ async function hydrateAssigneeFilter() {
     opt.textContent = e.fullName;
     sel.appendChild(opt);
   }
+
+  // Default to "my tickets" on the maintenance dashboard (first load only).
+  if (window.location?.pathname.endsWith("/maintenance.html")) {
+    if (!sessionStorage.getItem("assigneeFilterInitialized")) {
+      sessionStorage.setItem("assigneeFilterInitialized", "1");
+      try {
+        const emp = JSON.parse(localStorage.getItem("maintenanceEmployee") || "null");
+        const myId = emp?.id != null ? String(emp.id) : "";
+        if (myId && [...sel.options].some((o) => o.value === myId)) {
+          sel.value = myId;
+        }
+      } catch {}
+    }
+  }
 }
 
 async function assignTicketInline(requestNumber) {
@@ -276,6 +304,15 @@ async function openTicket(num) {
   $("mWhen").textContent = fmtWhen(t.requestTimestamp);
   $("mProp").textContent = `${t.propertyId} ${t.unitNumber} · ${t.buildingType || "—"}`;
   $("mText").innerHTML = escapeHtml(t.requestText);
+  const riskWrap = $("mRiskWrap");
+  const risk = (t.riskNotes || "").trim();
+  if (risk) {
+    $("mRisk").innerHTML = escapeHtml(risk);
+    riskWrap?.classList.remove("d-none");
+  } else {
+    $("mRisk").innerHTML = "";
+    riskWrap?.classList.add("d-none");
+  }
   $("mStatus").innerHTML = badgeStatus(t.status);
   const isGen = isGeneratingTicket(t);
   $("mPred").innerHTML = isGen ? badgeGenerating() : `${t.predictedCategory || "—"} ${badgeUrgency(t.predictedUrgency)}`;
@@ -449,3 +486,19 @@ $("mRefreshEvents").addEventListener("click", () => refreshEvents().catch((err) 
 $("mNoteForm").addEventListener("submit", (e) => addNoteActiveTicket(e).catch((err) => showAlert(err.message)));
 
 hydrateAssigneeFilter().finally(() => loadTickets());
+
+// Maintenance navbar auth UX
+if (window.location?.pathname.endsWith("/maintenance.html")) {
+  const token = localStorage.getItem("maintenanceAccessToken");
+  const logout = $("btnLogout");
+  const loginLink = $("btnLoginLink");
+  if (token) {
+    logout?.classList.remove("d-none");
+    loginLink?.classList.add("d-none");
+  }
+  logout?.addEventListener("click", () => {
+    localStorage.removeItem("maintenanceAccessToken");
+    localStorage.removeItem("maintenanceEmployee");
+    window.location.href = "/maintenance-login.html";
+  });
+}

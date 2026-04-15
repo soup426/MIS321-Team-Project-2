@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mulholland RE — Maintenance login</title>
+  <link href="vendor/bootstrap/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="bg-body-tertiary">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="/">Mulholland Real Estate</a>
+      <span class="navbar-text text-secondary small">Maintenance login</span>
+    </div>
+  </nav>
+
+  <main class="container pb-5" style="max-width: 520px;">
+    <div id="alert" class="alert d-none" role="alert"></div>
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="mb-3">Sign in</h5>
+        <form id="loginForm" class="vstack gap-3">
+          <div>
+            <label class="form-label">Username</label>
+            <input class="form-control" id="username" autocomplete="username" required />
+          </div>
+          <div>
+            <label class="form-label">Password</label>
+            <input class="form-control" id="password" type="password" autocomplete="current-password" required />
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-dark" type="submit" id="btnLogin">Login</button>
+            <a class="btn btn-outline-secondary" href="/">Cancel</a>
+          </div>
+          <div class="small text-muted">This calls <code>POST /api/auth/login</code> and stores a JWT in localStorage.</div>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <script src="vendor/bootstrap/bootstrap.bundle.min.js"></script>
+  <script src="maintenance-login.js?v=2"></script>
+</body>
+</html>
+
