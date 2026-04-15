@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MulhollandRealEstate.API.Data;
@@ -9,6 +10,7 @@ namespace MulhollandRealEstate.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class TicketsController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -233,6 +235,7 @@ public class TicketsController : ControllerBase
     }
 
     [HttpPost]
+    [AllowAnonymous] // keep test submit open for demos; resident flow uses /api/resident/tickets
     public async Task<ActionResult<TicketListItemDto>> Submit([FromBody] SubmitTicketDto dto, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(dto.PropertyId) || string.IsNullOrWhiteSpace(dto.UnitNumber) || string.IsNullOrWhiteSpace(dto.RequestText))
@@ -333,10 +336,11 @@ public class TicketsController : ControllerBase
     }
 
     [HttpGet("/api/employees")]
+    [Authorize]
     public async Task<ActionResult<IReadOnlyList<Employee>>> GetEmployees(CancellationToken ct)
     {
         var list = await _db.Employees.AsNoTracking()
-            .Where(e => e.Active)
+            .Where(e => e.Active && e.Username != "")
             .OrderBy(e => e.FullName)
             .ToListAsync(ct);
         return Ok(list);
@@ -353,6 +357,7 @@ public class TicketsController : ControllerBase
     }
 
     [HttpPost("/api/employees")]
+    [Authorize]
     public async Task<ActionResult<Employee>> CreateEmployee([FromBody] CreateEmployeeDto dto, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(dto.FullName))
