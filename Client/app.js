@@ -242,6 +242,20 @@ async function hydrateAssigneeFilter() {
     opt.textContent = e.fullName;
     sel.appendChild(opt);
   }
+
+  // Default to "my tickets" on the maintenance dashboard (first load only).
+  if (window.location?.pathname.endsWith("/maintenance.html")) {
+    if (!sessionStorage.getItem("assigneeFilterInitialized")) {
+      sessionStorage.setItem("assigneeFilterInitialized", "1");
+      try {
+        const emp = JSON.parse(localStorage.getItem("maintenanceEmployee") || "null");
+        const myId = emp?.id != null ? String(emp.id) : "";
+        if (myId && [...sel.options].some((o) => o.value === myId)) {
+          sel.value = myId;
+        }
+      } catch {}
+    }
+  }
 }
 
 async function assignTicketInline(requestNumber) {
