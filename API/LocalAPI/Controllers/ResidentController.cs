@@ -1,5 +1,7 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using MulhollandRealEstate.API.Data;
 using MulhollandRealEstate.API.Models;
 using MulhollandRealEstate.API.Services;
@@ -13,12 +15,18 @@ public class ResidentController : ControllerBase
     private readonly AppDbContext _db;
     private readonly ITriageService _triage;
     private readonly IConfiguration _configuration;
+    private readonly IHostEnvironment _hostEnvironment;
 
-    public ResidentController(AppDbContext db, ITriageService triage, IConfiguration configuration)
+    public ResidentController(
+        AppDbContext db,
+        ITriageService triage,
+        IConfiguration configuration,
+        IHostEnvironment hostEnvironment)
     {
         _db = db;
         _triage = triage;
         _configuration = configuration;
+        _hostEnvironment = hostEnvironment;
     }
 
     public sealed class ResidentSubmitDto
@@ -32,6 +40,7 @@ public class ResidentController : ControllerBase
     }
 
     [HttpPost("tickets")]
+    [AllowAnonymous]
     [RequestSizeLimit(15_000_000)] // 15MB total
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<object>> Submit([FromForm] ResidentSubmitDto dto, [FromForm] List<IFormFile>? images, CancellationToken ct)
@@ -88,7 +97,7 @@ public class ResidentController : ControllerBase
         {
             var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "image/jpeg", "image/png", "image/webp" };
             var uploadsPath = _configuration["Uploads:Path"]
-                              ?? Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "uploads"));
+                              ?? Path.GetFullPath(Path.Combine(_hostEnvironment.ContentRootPath, "uploads"));
             var folder = Path.Combine(uploadsPath, ticket.RequestNumber.ToString());
             Directory.CreateDirectory(folder);
 

@@ -16,6 +16,11 @@ function getAuth() {
   return { token, emp };
 }
 
+function isManagerOrDispatcherRole() {
+  const r = (getAuth().emp?.role || "").trim();
+  return /^manager$/i.test(r) || /^dispatcher$/i.test(r);
+}
+
 function showAlert(message, kind = "danger") {
   const el = $("alert");
   el.className = `alert alert-${kind}`;
@@ -47,6 +52,22 @@ function hideAlert() {
   $("alert").classList.add("d-none");
 }
 
+function normalizeErrorText(text) {
+  const raw = (text || "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("{") || raw.startsWith("[")) {
+    try {
+      const j = JSON.parse(raw);
+      if (typeof j === "string") return j;
+      if (j?.message) return String(j.message);
+      if (j?.error) return String(j.error);
+      if (j?.title) return String(j.title);
+    } catch {}
+  }
+  if (raw.startsWith("<!DOCTYPE") || raw.startsWith("<html")) return "Request failed (server returned HTML).";
+  return raw;
+}
+
 async function fetchJson(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body != null && !headers["Content-Type"])
@@ -68,7 +89,10 @@ async function fetchJson(path, options = {}) {
     window.location.href = "/maintenance-login.html";
     return null;
   }
-  if (!res.ok) throw new Error((text || "").trim() || res.statusText);
+  if (res.status === 403) {
+    throw new Error(normalizeErrorText(text) || "Not allowed for your role.");
+  }
+  if (!res.ok) throw new Error(normalizeErrorText(text) || res.statusText);
   return text ? JSON.parse(text) : null;
 }
 
@@ -326,7 +350,12 @@ let __activeTicketHasImages = false;
 
 async function loadEmployees({ force = false } = {}) {
   if (!force && __employees) return __employees;
-  __employees = await fetchJson("/api/employees");
+  if (isManagerOrDispatcherRole()) {
+    __employees = await fetchJson("/api/employees");
+    return __employees;
+  }
+  const { emp } = getAuth();
+  __employees = emp?.id != null ? [{ id: Number(emp.id), fullName: emp.fullName || "Me" }] : [];
   return __employees;
 }
 

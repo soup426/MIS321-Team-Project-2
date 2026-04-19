@@ -9,11 +9,11 @@ alwaysApply: true
 
 - **Sponsor:** Mulholland Real Estate — property management, maintenance ticket **triage** before dispatch.
 - **Value:** **n8n** workflow returns **category**, **urgency**, **confidence**, **tags**, and **risk notes**; **human review** when confidence is low. Dashboard filters and batch triage.
-- **Sample data:** `Sample Data/Maintenance Report Example.xlsx` — seeded via `API/ServerAPI/Data/maintenance-seed.json`. Columns `actualCategory` / `actualUrgency` are **evaluation labels**, not user input.
+- **Sample data:** `Sample Data/Maintenance Report Example.xlsx` — seeded via `API/LocalAPI/Data/maintenance-seed.json`. Columns `actualCategory` / `actualUrgency` are **evaluation labels**, not user input.
 
 ## Stack (this repo)
 
-- **API:** ASP.NET Core 9 Web API, **EF Core**, **MySQL** (Pomelo). Connection string from `ConnectionStrings:DefaultConnection` or Heroku-style **`DATABASE_URL`** (`mysql://...`) resolved in `Configuration/MysqlConnectionResolver.cs`. Migrations in `API/ServerAPI/Migrations/`.
+- **API:** ASP.NET Core 9 Web API, **EF Core**, **MySQL** (Pomelo) in **`API/LocalAPI/`**. Connection string from `ConnectionStrings:DefaultConnection` or Heroku-style **`DATABASE_URL`** (`mysql://...`) resolved in `Configuration/MysqlConnectionResolver.cs`. EF migrations in `API/LocalAPI/Migrations/`.
 - **Triage:** HTTP **POST** from `TriageService` to **`N8n:TriageWebhookUrl`** with payload shape in `Services/N8nTriageDtos.cs`. If the URL is missing, disabled, or the call fails, use **heuristic** triage.
 - **Client:** **Bootstrap 5** + **vanilla JS** under `Client/` — no npm/bundler unless the team adds it.
 - **Integration:** Browser → REST + JSON; permissive CORS for local dev.

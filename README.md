@@ -1,6 +1,6 @@
 # MIS 321 — Team Project 2 (Mulholland Real Estate)
 
-Property-management maintenance **triage** demo: ASP.NET Core 9 Web API (EF Core + **MySQL** via Pomelo), Bootstrap + vanilla JS client, and **n8n webhook** triage with **heuristic fallback**. Production DB can live on **Heroku** (`DATABASE_URL` or connection string). Sample data: `Sample Data/Maintenance Report Example.xlsx` → `API/ServerAPI/Data/maintenance-seed.json`.
+Property-management maintenance **triage** demo: ASP.NET Core 9 Web API (EF Core + **MySQL** via Pomelo), Bootstrap + vanilla JS client, and **n8n webhook** triage with **heuristic fallback**. Deploy or run locally with MySQL (`DATABASE_URL` or connection string). Sample data: `Sample Data/Maintenance Report Example.xlsx` → `API/LocalAPI/Data/maintenance-seed.json`.
 
 **Sponsor notes:** see `Intro meeting for group 2.txt` (dashboard, AI triage, human review when confidence is low, tags, filters, risk — plus bonus ideas: images, mobile, skill-based assignment).
 
@@ -8,8 +8,7 @@ Property-management maintenance **triage** demo: ASP.NET Core 9 Web API (EF Core
 
 | Path | Purpose |
 |------|---------|
-| `API/ServerAPI/` | Server API (deploy target): main Web API, EF migrations, seed JSON |
-| `API/LocalAPI/` | Local API (dev): same API wired for local dashboard and rapid testing (typical port **5288**) |
+| `API/LocalAPI/` | **Main Web API:** EF migrations, seed JSON, Docker, static `Client/` on **5288** (see `README_TESTING.md`) |
 | `Client/` | Static dashboard (`index.html`, `app.js`, `styles.css`); Bootstrap vendored under `Client/vendor/bootstrap/` (no CDN required) |
 | `SQL/` | Optional hand-run MySQL scripts (`mulholland_schema.sql`, `mulholland_workforce.sql`) aligned with n8n/Heroku |
 | `Sample Data/` | Source Excel for seeded tickets |
@@ -42,7 +41,7 @@ Heroku-style URLs: set **`DATABASE_URL`** = `mysql://user:pass@host:port/dbname`
 
 ### Migrations / seed
 
-`Database:AutoMigrate` and `Database:SeedEnabled` in appsettings control whether startup migrates/seeds (default **false** for Heroku to avoid surprise DDL). Use EF migrations from `API/ServerAPI` when you want local schema from code.
+`Database:AutoMigrate`, `Database:SeedEnabled`, and `Database:SeedDemoUsers` in appsettings control startup migrate/seed (defaults vary; see `API/LocalAPI/appsettings.json`). Run EF from **`API/LocalAPI`**: `dotnet ef database update`.
 
 ## Triage: n8n webhook
 
@@ -63,7 +62,7 @@ The parser also accepts common n8n shapes: top-level **array** (first item), or 
 Configure via user secrets or env:
 
 ```bash
-cd API/ServerAPI
+cd API/LocalAPI
 dotnet user-secrets set "N8n:TriageWebhookUrl" "https://your-n8n.example/webhook/..."
 ```
 
@@ -99,27 +98,18 @@ If you want the AI to actually “look” at the image, your n8n workflow needs 
 - Send it to a vision-capable model node (or run OCR/labeling first)
 - Merge the extracted signals into your prompt before producing `predictedCategory`, `predictedUrgency`, `confidence`, `tags`, `riskNotes`
 
-## Run the main API
-
-```bash
-cd API/ServerAPI
-dotnet run --launch-profile http
-```
-
-Swagger: `/swagger` (default URL in launch settings, often port **5278**).  
-If `Client/` exists at repo root, the same process also serves the **dashboard** at `/` (static files + default `index.html`).
-
-## Run Local API + dashboard (recommended for local demo)
+## Run the API + dashboard (recommended)
 
 ```bash
 cd API/LocalAPI
 dotnet run --launch-profile testing-http
 ```
 
-- **API + Swagger:** `http://localhost:5288/swagger`
-- **Dashboard (static files served by Kestrel):** `http://localhost:5288/`
+- **Dashboard:** `http://localhost:5288/` (static `Client/` + default `index.html`)
+- **Swagger:** `http://localhost:5288/swagger`
+- **Local testing notes:** `API/LocalAPI/README_TESTING.md` (demo logins, seed flags, n8n)
 
-The client uses **`window.location.origin`** for API calls, so opening the dashboard on the same host/port avoids CORS and mixed-origin issues.
+The client uses **`window.location.origin`** for API calls, so open the app from the same host/port as Kestrel to avoid CORS and mixed-origin issues.
 
 ## Optional UI upgrade: GridStack “stats” dashboard
 
@@ -185,17 +175,20 @@ If the ticket list gets large, add a new endpoint like `GET /api/tickets/stats` 
 - `GET /api/tickets/{requestNumber}`
 - `POST /api/tickets` — submit test ticket (auto-triage if configured)
 - `POST /api/tickets/{requestNumber}/triage` — re-run triage
-- `POST /api/tickets/triage-all`
+- `POST /api/tickets/triage-all` — **Manager/Dispatcher only** (can be slow if n8n runs per ticket)
 - `GET /api/tickets/{requestNumber}/events` — audit trail / notes
 - `POST /api/tickets/{requestNumber}/notes`
 - `POST /api/tickets/{requestNumber}/assign` — body `employeeId` (use `0` to unassign)
 - `POST /api/tickets/{requestNumber}/close` / `POST .../reopen`
 
-**Employees**
+**Employees** (Manager/Dispatcher only for list/create in LocalAPI)
 
 - `GET /api/employees`
 - `POST /api/employees` — create assignee (dev/demo)
-- `POST /api/employees/{employeeId}/skills` — set skills for auto-assign (Manager/Dispatcher)
+
+**Residents**
+
+- `POST /api/resident/tickets` — multipart submit (anonymous); see `resident.html`
 
 `actualCategory` / `actualUrgency` are **evaluation labels** from sample data, not resident input.
 
@@ -217,24 +210,17 @@ When `Jwt:Key` is set, the API enables JWT auth and protects most endpoints.
 - `POST /api/auth/register` — dev-only when enabled
 - `GET /api/me` — current employee
 
-### Authorization rules (current)
+### Authorization rules (LocalAPI)
 
-- **Manager/Dispatcher**: can see all tickets and manage employees
-- **Employee**: defaults to “my tickets” when calling `GET /api/tickets` without `assignedEmployeeId`
-- `POST /api/tickets` (submit) is anonymous (resident-style submission)
-
-## Auto-assign (AI → employee by skill)
-
-After triage, if the ticket is unassigned and does not need human review, the API can auto-assign based on `predictedCategory` matching an employee skill.
-
-Config:
-- `AutoAssign:Enabled` (default true)
-
+- **Manager/Dispatcher**: all tickets; `GET/POST /api/employees`; batch **`POST /api/tickets/triage-all`**
+- **Maintenance** (and other non-manager roles): `GET /api/tickets` defaults to **assigned-to-me** unless you pass **`assignedEmployeeId=0`** (unassigned pool). Cannot list another user’s assignee filter. Ticket detail and mutations require the ticket to be **unassigned** or **assigned to you** (otherwise **403**).
+- **`POST /api/tickets`** (JSON test submit) and **`POST /api/resident/tickets`** (multipart) are **anonymous** when JWT is enabled (`[AllowAnonymous]`).
+- Employee **`passwordHash`** is never returned in JSON (`[JsonIgnore]`).
 
 ## Course artifacts
 
 See `Intro meeting for group 2.txt` and `Group Project 2 - Business Startup.pdf`.
 
-## Docker (Server API only)
+## Docker
 
-`API/ServerAPI/Dockerfile` builds the API. Pass **`DATABASE_URL`** or **`ConnectionStrings__DefaultConnection`** at runtime.
+`API/LocalAPI/Dockerfile` builds the API. Pass **`DATABASE_URL`** or **`ConnectionStrings__DefaultConnection`** at runtime.

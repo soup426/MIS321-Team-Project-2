@@ -49,7 +49,7 @@ Use this as the team’s working backlog. Check boxes as you complete work; add 
 
 - [ ] CI build (optional): `dotnet build` on push
 - [x] Heroku `DATABASE_URL` / connection string documented (see README)
-- [x] Server API `Program.cs` serves `Client/` static files (same pattern as LocalAPI) when `../Client` exists
+- [x] LocalAPI `Program.cs` serves `Client/` static files when `../Client` exists
 
 ## Suggested next additions (not in sponsor contract — useful)
 

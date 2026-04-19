@@ -89,6 +89,9 @@ async function fetchJson(path, options = {}) {
       return null;
     }
   }
+  if (res.status === 403) {
+    throw new Error(normalizeErrorText(text) || "Not allowed for your role.");
+  }
   if (!res.ok) throw new Error(normalizeErrorText(text) || res.statusText);
   return text ? JSON.parse(text) : null;
 }
@@ -276,10 +279,42 @@ async function triageOne(num) {
   }
 }
 
+function parseLoggedInEmployee() {
+  try {
+    return JSON.parse(localStorage.getItem("maintenanceEmployee") || "null");
+  } catch {
+    return null;
+  }
+}
+
+function isManagerOrDispatcherRole() {
+  const r = (parseLoggedInEmployee()?.role || "").trim();
+  return /^manager$/i.test(r) || /^dispatcher$/i.test(r);
+}
+
+/** Managers load directory from API; others only assign to themselves (matches LocalAPI auth). */
 async function loadEmployees({ force = false } = {}) {
   if (!force && __employees) return __employees;
-  __employees = await fetchJson("/api/employees");
+  if (isManagerOrDispatcherRole()) {
+    __employees = await fetchJson("/api/employees");
+    return __employees;
+  }
+  const emp = parseLoggedInEmployee();
+  __employees = emp?.id != null ? [{ id: Number(emp.id), fullName: emp.fullName || "Me" }] : [];
   return __employees;
+}
+
+function applyMaintenanceRoleUi() {
+  if (!(window.location?.pathname || "").endsWith("/maintenance.html")) return;
+  const btn = $("btnTriageAll");
+  if (!btn) return;
+  if (!isManagerOrDispatcherRole()) {
+    btn.classList.add("d-none");
+    btn.setAttribute("aria-hidden", "true");
+  } else {
+    btn.classList.remove("d-none");
+    btn.removeAttribute("aria-hidden");
+  }
 }
 
 async function hydrateAssigneeFilter() {
@@ -661,7 +696,11 @@ $("mTriageBtn")?.addEventListener("click", () => triageActiveTicket().catch((err
 $("mUploadImageBtn")?.addEventListener("click", () => uploadActiveTicketImage().catch((err) => showAlert(err.message)));
 $("mNoteForm")?.addEventListener("submit", (e) => addNoteActiveTicket(e).catch((err) => showAlert(err.message)));
 
-hydrateAssigneeFilter().finally(() => loadTickets());
+hydrateAssigneeFilter()
+  .finally(() => {
+    applyMaintenanceRoleUi();
+    loadTickets();
+  });
 
 // Background auto-refresh (AJAX). No full page reload.
 function startAutoRefresh() {

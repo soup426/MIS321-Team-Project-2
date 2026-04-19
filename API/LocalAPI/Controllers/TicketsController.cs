@@ -1,7 +1,9 @@
+using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using MulhollandRealEstate.API.Data;
 using MulhollandRealEstate.API.Models;
 using MulhollandRealEstate.API.Services;
@@ -16,12 +18,18 @@ public class TicketsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly ITriageService _triage;
     private readonly IConfiguration _configuration;
+    private readonly IHostEnvironment _hostEnvironment;
 
-    public TicketsController(AppDbContext db, ITriageService triage, IConfiguration configuration)
+    public TicketsController(
+        AppDbContext db,
+        ITriageService triage,
+        IConfiguration configuration,
+        IHostEnvironment hostEnvironment)
     {
         _db = db;
         _triage = triage;
         _configuration = configuration;
+        _hostEnvironment = hostEnvironment;
     }
 
     [HttpGet]
@@ -32,6 +40,9 @@ public class TicketsController : ControllerBase
         [FromQuery] long? assignedEmployeeId,
         CancellationToken ct)
     {
+        if (!TryGetEmployeeScope(out var isManager, out var me))
+            return Forbid();
+
         var q = _db.MaintenanceRequests.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(urgency))
             q = q.Where(t => (t.PredictedUrgency ?? t.ActualUrgency) == urgency);
@@ -41,11 +52,15 @@ public class TicketsController : ControllerBase
             q = q.Where(t => t.Status == status);
         if (assignedEmployeeId.HasValue)
         {
+            if (!isManager && assignedEmployeeId.Value > 0 && assignedEmployeeId.Value != me!.Value)
+                return Forbid();
             if (assignedEmployeeId.Value == 0)
                 q = q.Where(t => t.AssignedEmployeeId == null);
             else
                 q = q.Where(t => t.AssignedEmployeeId == assignedEmployeeId.Value);
         }
+        else if (me.HasValue)
+            q = q.Where(t => t.AssignedEmployeeId == me.Value);
 
         var list = await q.OrderByDescending(t => t.RequestTimestamp).ToListAsync(ct);
         var empNames = await _db.Employees.AsNoTracking()
@@ -58,7 +73,11 @@ public class TicketsController : ControllerBase
     [HttpGet("summary")]
     public async Task<ActionResult<TriageSummaryDto>> Summary(CancellationToken ct)
     {
+        if (!TryGetEmployeeScope(out _, out var me))
+            return Forbid();
+
         var rows = await _db.MaintenanceRequests.AsNoTracking().ToListAsync(ct);
+        if (me.HasValue) rows = rows.Where(r => r.AssignedEmployeeId == me.Value).ToList();
         var triaged = rows.Where(r => r.LastTriagedAt != null).ToList();
         var byU = triaged
             .Where(r => !string.IsNullOrEmpty(r.PredictedUrgency))
@@ -86,10 +105,15 @@ public class TicketsController : ControllerBase
     [HttpGet("{requestNumber:int}")]
     public async Task<ActionResult<TicketListItemDto>> GetOne(int requestNumber, CancellationToken ct)
     {
+        if (!TryGetEmployeeScope(out var isManager, out var me))
+            return Forbid();
+
         var t = await _db.MaintenanceRequests.AsNoTracking()
             .FirstOrDefaultAsync(x => x.RequestNumber == requestNumber, ct);
         if (t is null)
             return NotFound();
+        if (!CanAccessTicket(me, isManager, t))
+            return Forbid();
         string? empName = null;
         if (t.AssignedEmployeeId is { } eid)
             empName = await _db.Employees.AsNoTracking().Where(e => e.Id == eid).Select(e => e.FullName).FirstOrDefaultAsync(ct);
@@ -110,10 +134,15 @@ public class TicketsController : ControllerBase
     [HttpGet("{requestNumber:int}/images")]
     public async Task<ActionResult<IReadOnlyList<TicketImageDto>>> ListImages(int requestNumber, CancellationToken ct)
     {
+        if (!TryGetEmployeeScope(out var isManager, out var me))
+            return Forbid();
+
         var t = await _db.MaintenanceRequests.AsNoTracking()
             .FirstOrDefaultAsync(x => x.RequestNumber == requestNumber, ct);
         if (t is null)
             return NotFound();
+        if (!CanAccessTicket(me, isManager, t))
+            return Forbid();
 
         var list = await _db.MaintenanceRequestImages.AsNoTracking()
             .Where(x => x.MaintenanceRequestId == t.Id)
@@ -142,6 +171,9 @@ public class TicketsController : ControllerBase
     [RequestSizeLimit(10_000_000)] // 10MB
     public async Task<ActionResult<TicketImageDto>> UploadImage(int requestNumber, IFormFile file, CancellationToken ct)
     {
+        if (!TryGetEmployeeScope(out var isManager, out var me))
+            return Forbid();
+
         if (file is null || file.Length <= 0)
             return BadRequest(new { message = "file is required" });
 
@@ -157,10 +189,12 @@ public class TicketsController : ControllerBase
         var t = await _db.MaintenanceRequests.FirstOrDefaultAsync(x => x.RequestNumber == requestNumber, ct);
         if (t is null)
             return NotFound();
+        if (!CanAccessTicket(me, isManager, t))
+            return Forbid();
 
         // Must match Program.cs static files configuration (defaults to ContentRoot/uploads).
         var uploadsPath = _configuration["Uploads:Path"]
-                          ?? Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "uploads"));
+                          ?? Path.GetFullPath(Path.Combine(_hostEnvironment.ContentRootPath, "uploads"));
         var folder = Path.Combine(uploadsPath, requestNumber.ToString());
         Directory.CreateDirectory(folder);
 
@@ -293,9 +327,14 @@ public class TicketsController : ControllerBase
     [HttpPost("{requestNumber:int}/triage")]
     public async Task<ActionResult<TicketListItemDto>> TriageOne(int requestNumber, CancellationToken ct)
     {
+        if (!TryGetEmployeeScope(out var isManager, out var me))
+            return Forbid();
+
         var t = await _db.MaintenanceRequests.FirstOrDefaultAsync(x => x.RequestNumber == requestNumber, ct);
         if (t is null)
             return NotFound();
+        if (!CanAccessTicket(me, isManager, t))
+            return Forbid();
 
         var result = await _triage.TriageAsync(t, ct);
         ApplyTriage(t, result);
@@ -309,6 +348,9 @@ public class TicketsController : ControllerBase
     [HttpPost("triage-all")]
     public async Task<ActionResult<object>> TriageAll(CancellationToken ct)
     {
+        if (!IsManagerOrDispatcher())
+            return Forbid();
+
         var rows = await _db.MaintenanceRequests.ToListAsync(ct);
         var n = 0;
         foreach (var t in rows)
@@ -336,7 +378,7 @@ public class TicketsController : ControllerBase
     }
 
     [HttpGet("/api/employees")]
-    [Authorize]
+    [Authorize(Roles = "Manager,Dispatcher")]
     public async Task<ActionResult<IReadOnlyList<Employee>>> GetEmployees(CancellationToken ct)
     {
         var list = await _db.Employees.AsNoTracking()
@@ -357,7 +399,7 @@ public class TicketsController : ControllerBase
     }
 
     [HttpPost("/api/employees")]
-    [Authorize]
+    [Authorize(Roles = "Manager,Dispatcher")]
     public async Task<ActionResult<Employee>> CreateEmployee([FromBody] CreateEmployeeDto dto, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(dto.FullName))
@@ -399,12 +441,17 @@ public class TicketsController : ControllerBase
     [HttpPost("{requestNumber:int}/notes")]
     public async Task<ActionResult<object>> AddNote(int requestNumber, [FromBody] AddNoteDto dto, CancellationToken ct)
     {
+        if (!TryGetEmployeeScope(out var isManager, out var me))
+            return Forbid();
+
         if (string.IsNullOrWhiteSpace(dto.Note))
             return BadRequest(new { message = "note is required" });
 
         var t = await _db.MaintenanceRequests.FirstOrDefaultAsync(x => x.RequestNumber == requestNumber, ct);
         if (t is null)
             return NotFound();
+        if (!CanAccessTicket(me, isManager, t))
+            return Forbid();
 
         _db.MaintenanceRequestEvents.Add(new MaintenanceRequestEvent
         {
@@ -421,6 +468,16 @@ public class TicketsController : ControllerBase
     [HttpGet("{requestNumber:int}/events")]
     public async Task<ActionResult<IReadOnlyList<TicketEventDto>>> GetEvents(int requestNumber, CancellationToken ct)
     {
+        if (!TryGetEmployeeScope(out var isManager, out var me))
+            return Forbid();
+
+        var t0 = await _db.MaintenanceRequests.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.RequestNumber == requestNumber, ct);
+        if (t0 is null)
+            return NotFound();
+        if (!CanAccessTicket(me, isManager, t0))
+            return Forbid();
+
         var list = await _db.MaintenanceRequestEvents.AsNoTracking()
             .Join(
                 _db.MaintenanceRequests.AsNoTracking(),
@@ -462,14 +519,21 @@ public class TicketsController : ControllerBase
     [HttpGet("recent-events")]
     public async Task<ActionResult<IReadOnlyList<TicketEventDto>>> RecentEvents([FromQuery] int? take, CancellationToken ct)
     {
+        if (!TryGetEmployeeScope(out var isManager, out var me))
+            return Forbid();
+
         var n = take is > 0 and <= 200 ? take.Value : 50;
 
-        var list = await _db.MaintenanceRequestEvents.AsNoTracking()
+        var q = _db.MaintenanceRequestEvents.AsNoTracking()
             .Join(
                 _db.MaintenanceRequests.AsNoTracking(),
                 ev => ev.MaintenanceRequestId,
                 r => r.Id,
-                (ev, r) => new { ev, r })
+                (ev, r) => new { ev, r });
+        if (!isManager && me.HasValue)
+            q = q.Where(x => x.r.AssignedEmployeeId == null || x.r.AssignedEmployeeId == me.Value);
+
+        var list = await q
             .OrderByDescending(x => x.ev.EventTimestamp)
             .Take(n)
             .ToListAsync(ct);
@@ -511,9 +575,17 @@ public class TicketsController : ControllerBase
     [HttpPost("{requestNumber:int}/assign")]
     public async Task<ActionResult<TicketListItemDto>> Assign(int requestNumber, [FromBody] AssignTicketDto dto, CancellationToken ct)
     {
+        if (!TryGetEmployeeScope(out var isManager, out var me))
+            return Forbid();
+
         var t = await _db.MaintenanceRequests.FirstOrDefaultAsync(x => x.RequestNumber == requestNumber, ct);
         if (t is null)
             return NotFound();
+        if (!CanAccessTicket(me, isManager, t))
+            return Forbid();
+
+        if (!isManager && dto.EmployeeId > 0 && dto.EmployeeId != me!.Value)
+            return Forbid();
 
         // Allow unassign with employeeId=0 (keeps the endpoint simple for the dashboard).
         if (dto.EmployeeId <= 0)
@@ -564,9 +636,14 @@ public class TicketsController : ControllerBase
     [HttpPost("{requestNumber:int}/close")]
     public async Task<ActionResult<TicketListItemDto>> Close(int requestNumber, [FromBody] CloseTicketDto dto, CancellationToken ct)
     {
+        if (!TryGetEmployeeScope(out var isManager, out var me))
+            return Forbid();
+
         var t = await _db.MaintenanceRequests.FirstOrDefaultAsync(x => x.RequestNumber == requestNumber, ct);
         if (t is null)
             return NotFound();
+        if (!CanAccessTicket(me, isManager, t))
+            return Forbid();
 
         t.Status = "Closed";
         t.ClosedAt = DateTime.UtcNow;
@@ -592,9 +669,14 @@ public class TicketsController : ControllerBase
     [HttpPost("{requestNumber:int}/reopen")]
     public async Task<ActionResult<TicketListItemDto>> Reopen(int requestNumber, CancellationToken ct)
     {
+        if (!TryGetEmployeeScope(out var isManager, out var me))
+            return Forbid();
+
         var t = await _db.MaintenanceRequests.FirstOrDefaultAsync(x => x.RequestNumber == requestNumber, ct);
         if (t is null)
             return NotFound();
+        if (!CanAccessTicket(me, isManager, t))
+            return Forbid();
 
         t.Status = "Open";
         t.ClosedAt = null;
@@ -614,6 +696,32 @@ public class TicketsController : ControllerBase
         if (t.AssignedEmployeeId is { } eid)
             empName = await _db.Employees.AsNoTracking().Where(e => e.Id == eid).Select(e => e.FullName).FirstOrDefaultAsync(ct);
         return Ok(MapToDto(t, empName));
+    }
+
+    private static bool IsManagerOrDispatcher(ClaimsPrincipal user) =>
+        user.IsInRole("Manager") || user.IsInRole("Dispatcher");
+
+    private bool IsManagerOrDispatcher() => IsManagerOrDispatcher(User);
+
+    /// <summary>Managers see all rows; others must have a parseable employeeId claim.</summary>
+    private bool TryGetEmployeeScope(out bool isManager, out long? me)
+    {
+        isManager = IsManagerOrDispatcher();
+        me = null;
+        if (isManager) return true;
+        var idStr = User.FindFirstValue("employeeId");
+        if (!long.TryParse(idStr, out var id)) return false;
+        me = id;
+        return true;
+    }
+
+    /// <summary>Non-managers may read/act on unassigned tickets or tickets assigned to them.</summary>
+    private static bool CanAccessTicket(long? me, bool isManager, MaintenanceRequest t)
+    {
+        if (isManager) return true;
+        if (!me.HasValue) return false;
+        if (t.AssignedEmployeeId == null) return true;
+        return t.AssignedEmployeeId == me.Value;
     }
 
     private static TicketListItemDto MapToDto(MaintenanceRequest t, string? assignedEmployeeName)
