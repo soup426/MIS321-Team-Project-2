@@ -5,15 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mulholland RE — Submit maintenance request</title>
   <link href="vendor/bootstrap/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body class="bg-body-tertiary">
+<body>
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
     <div class="container-fluid">
-      <a class="navbar-brand" href="/">Mulholland Real Estate</a>
+      <a class="navbar-brand" href="/"><i class="bi bi-building me-2"></i>Mulholland Real Estate</a>
       <span class="navbar-text text-secondary small">Resident maintenance request</span>
       <div class="ms-auto">
-        <a class="btn btn-outline-light btn-sm" href="/">Dashboard</a>
+        <a class="btn btn-outline-light btn-sm" href="/"><i class="bi bi-house me-1"></i>Home</a>
       </div>
     </div>
   </nav>
@@ -26,7 +27,7 @@
 
     <div class="card shadow-sm">
       <div class="card-body">
-        <h5 class="mb-3">Submit a maintenance request</h5>
+        <h5 class="mb-3"><i class="bi bi-wrench-adjustable me-2"></i>Submit a maintenance request</h5>
         <form id="residentForm" class="row g-3" enctype="multipart/form-data">
           <div class="col-md-3">
             <label class="form-label">Property</label>
@@ -71,8 +72,11 @@
     </div>
   </main>
 
+  <footer class="site-footer">
+    &copy; 2026 Mulholland Real Estate
+  </footer>
+
   <script src="vendor/bootstrap/bootstrap.bundle.min.js"></script>
   <script src="resident.js?v=1"></script>
 </body>
 </html>
-
