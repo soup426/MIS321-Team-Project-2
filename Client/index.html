@@ -5,38 +5,48 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mulholland RE — Portal</title>
   <link href="vendor/bootstrap/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body class="bg-body-tertiary">
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-0">
     <div class="container-fluid">
-      <span class="navbar-brand">Mulholland Real Estate</span>
-      <span class="navbar-text text-secondary small">Maintenance & resident portal</span>
+      <span class="navbar-brand"><i class="bi bi-building me-2"></i>Mulholland Real Estate</span>
+      <span class="navbar-text text-secondary small">Maintenance &amp; resident portal</span>
     </div>
   </nav>
+
+  <div class="hero-banner">
+    <h1><i class="bi bi-house-heart me-2"></i>Mulholland Real Estate</h1>
+    <p>Maintenance &amp; resident portal — fast triage, real results.</p>
+  </div>
 
   <main class="container pb-5" style="max-width: 1000px;">
     <div class="row g-4">
       <div class="col-md-6">
         <div class="card shadow-sm h-100">
           <div class="card-body">
-            <h5 class="card-title">Resident</h5>
+            <h5 class="card-title"><i class="bi bi-house-door me-2"></i>Resident</h5>
             <p class="text-muted mb-3">Submit a maintenance request with optional photos. No login.</p>
-            <a class="btn btn-primary" href="resident.html">Submit a request</a>
+            <a class="btn btn-primary" href="resident.html"><i class="bi bi-plus-circle me-1"></i>Submit a request</a>
           </div>
         </div>
       </div>
       <div class="col-md-6">
         <div class="card shadow-sm h-100">
           <div class="card-body">
-            <h5 class="card-title">Maintenance</h5>
+            <h5 class="card-title"><i class="bi bi-tools me-2"></i>Maintenance</h5>
             <p class="text-muted mb-3">View and triage tickets, assign staff, and close requests. Login required.</p>
-            <a class="btn btn-dark" href="maintenance-login.html" id="btnMaintenance">Open dashboard</a>
+            <a class="btn btn-dark" href="maintenance-login.html" id="btnMaintenance"><i class="bi bi-grid me-1"></i>Open dashboard</a>
           </div>
         </div>
       </div>
     </div>
   </main>
+
+  <footer class="site-footer">
+    &copy; 2026 Mulholland Real Estate
+  </footer>
 
   <script src="vendor/bootstrap/bootstrap.bundle.min.js"></script>
   <script>
